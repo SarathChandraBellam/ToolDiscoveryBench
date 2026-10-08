@@ -143,6 +143,7 @@ class _Run:
             "calls": res.calls,
             "calibrated": res.calibrated,
             "input_tokens": res.input_tokens,
+            "cost_usd": res.cost_usd,
             "output_tokens": res.output_tokens,
             "error": res.error,
             "abstained": res.abstained,

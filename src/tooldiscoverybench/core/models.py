@@ -77,6 +77,7 @@ class RouteResult:
     error: str | None = None
     raw: dict[str, Any] | None = None
     abstained: bool = False
+    cost_usd: float | None = None  # provider-reported cost, when the API returns one
 
     @property
     def top1(self) -> str | None:

@@ -53,6 +53,7 @@ flowchart LR
 
 | Router | `type` | Modes | What it measures |
 |---|---|---|---|
+| **Decision models on OpenRouter** | `openrouter` | `flat` · `factored` · `hierarchical` | One `OPENROUTER_API_KEY` for `typesafe/jev-1.13` (or `~typesafe/jev-latest`) and `openai/gpt-6-luna-decisions` via `POST /api/alpha/decisions`. Cost is measured from `usage.cost`. |
 | **TypeSafe Jev** | `jev` | `flat` · `factored` · `hierarchical` | A System One decision model: one `choice` over tools, calibrated probabilities, input-only billing. Native API or any `/v1/decisions` gateway (Bifrost, NanoGPT). |
 | **OpenAI Decisions API** | `openai_decisions` | `flat` · `factored` · `hierarchical` | `POST /v1/decisions` on `gpt-6-luna` (public beta): typed choice answers with probabilities and confidence. |
 | **Strands Agents** | `strands` | `native` · `structured` | An LLM agent with every tool registered as a stub carrying its real MCP schema; records the first tool it calls. Providers: `bedrock`, `anthropic`, `openai`, `huggingface`, `litellm`. |
@@ -69,6 +70,17 @@ The two decision APIs share one router, so they run the same three strategies:
 
 All three add a **"none of these tools"** option, so a decision router can abstain. Any other
 router can abstain below a score threshold (`abstain_threshold`).
+
+### Decision models compared
+
+| Model | OpenRouter id | Input $/1M | Output | Context |
+|---|---|---:|---|---:|
+| TypeSafe Jev | `typesafe/jev-1.13` (pinned) · `~typesafe/jev-latest` | $0.042 | free | 32K |
+| GPT-6 Luna Decisions | `openai/gpt-6-luna-decisions` | $0.10 | free | 1.1M |
+
+Both take TypeSafe's native schema (`model`, `state`, `questions` with `choice` criteria) on
+OpenRouter, so they run through the same router and modes. The direct TypeSafe and OpenAI
+APIs (`jev`, `openai_decisions`) stay available.
 
 ## 📚 Datasets
 
@@ -104,12 +116,12 @@ Decisions and Strands results land in the same table as soon as keys are configu
 git clone https://github.com/SarathChandraBellam/ToolDiscoveryBench
 cd ToolDiscoveryBench
 uv sync --extra strands --extra huggingface --extra embed
-cp .env.example .env        # TYPESAFE_API_KEY, OPENAI_API_KEY, HF_TOKEN, AWS creds ...
+cp .env.example .env        # OPENROUTER_API_KEY (Jev + Luna), HF_TOKEN, AWS creds ...
 
 uv run tdb validate                         # golden labels match live tool names?
 uv run tdb run --limit 20                   # smoke test, every configured router
 uv run tdb run                              # full run -> runs/<timestamp>/report.md
-uv run tdb run --suites multi_confused --routers jev-factored,openai-decisions-factored
+uv run tdb run --routers or-jev-factored,or-luna-factored,embed-bge-small,bm25   # Jev vs Luna
 uv run tdb ask "Is AgentCore available in Mumbai?" --router jev-factored
 ```
 

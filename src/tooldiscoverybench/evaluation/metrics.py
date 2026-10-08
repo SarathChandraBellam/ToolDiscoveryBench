@@ -120,8 +120,9 @@ def summarize(
                 "lat_mean_ms": _mean(lat),
                 "calls_mean": _mean([r["calls"] for r in ok]),
                 "in_tokens_mean": mean_tok,
-                "usd_per_1k_q": (
-                    (mean_tok * price / 1e6 * 1000) if (mean_tok and price is not None) else None
+                "usd_per_1k_q": _usd_per_1k(ok, mean_tok, price),
+                "cost_source": (
+                    "measured" if any(r.get("cost_usd") is not None for r in ok) else "estimated"
                 ),
                 "ece": ece(conf, corr) if calibrated else None,
                 "brier": (
@@ -140,6 +141,18 @@ def summarize(
             }
         )
     return out
+
+
+def _usd_per_1k(
+    rows: list[dict[str, Any]], mean_tok: float | None, price: float | None
+) -> float | None:
+    """Measured provider cost when reported (OpenRouter usage.cost), else tokens x config price."""
+    measured = [float(r["cost_usd"]) for r in rows if r.get("cost_usd") is not None]
+    if measured:
+        return sum(measured) / len(measured) * 1000
+    if mean_tok and price is not None:
+        return mean_tok * price / 1e6 * 1000
+    return None
 
 
 def by_tag(rows: Iterable[dict[str, Any]]) -> dict[str, dict[str, float]]:

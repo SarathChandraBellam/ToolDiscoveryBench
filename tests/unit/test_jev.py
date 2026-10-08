@@ -162,3 +162,74 @@ async def test_abstain_can_be_disabled(tools: list[Tool], server_desc: dict[str,
     res = await jev(cap, mode="flat", allow_abstain=False).route("q", tools, server_desc)
     assert "__none__" not in cap[0]["body"]["questions"]["tool"]["criteria"]
     assert not res.abstained
+
+
+async def test_openrouter_dialect_and_measured_cost(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    cap: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        cap.append(
+            {"url": str(request.url), "body": body, "auth": request.headers["authorization"]}
+        )
+        opts = list(body["questions"]["tool"]["criteria"])
+        probs = {o: (0.9 if o == "aws.search_docs" else 0.1 / (len(opts) - 1)) for o in opts}
+        return httpx.Response(
+            200,
+            json={
+                "model": "typesafe/jev-1.13-20260901",
+                "answers": {
+                    "tool": {
+                        "type": "choice",
+                        "choice": "aws.search_docs",
+                        "probabilities": probs,
+                        "confidence": 0.8,
+                    }
+                },
+                "usage": {"input_tokens": 400, "output_tokens": 0, "cost": 0.0000168},
+            },
+        )
+
+    router = build_router(
+        {
+            "name": "or",
+            "type": "openrouter",
+            "model": "openai/gpt-6-luna-decisions",
+            "api_key": "or-key",
+            "_transport": httpx.MockTransport(handler),
+        }
+    )
+    res = await router.route("aws docs", tools, server_desc)
+    assert cap[0]["url"] == "https://openrouter.ai/api/alpha/decisions"
+    assert cap[0]["auth"] == "Bearer or-key"
+    assert cap[0]["body"]["model"] == "openai/gpt-6-luna-decisions"  # sent verbatim
+    assert cap[0]["body"]["questions"]["tool"]["type"] == "choice"
+    assert res.top1 == "aws.search_docs"
+    assert res.cost_usd == pytest.approx(0.0000168) and res.input_tokens == 400
+
+
+def test_openrouter_needs_its_own_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    router = build_router({"name": "or", "type": "openrouter", "model": "typesafe/jev-1.13"})
+    assert router.unavailable_reason() == "OPENROUTER_API_KEY not set"
+
+
+def test_list_shaped_answers_are_normalised() -> None:
+    from tooldiscoverybench.routers.jev.client import normalise_answers
+
+    out = normalise_answers(
+        [
+            {
+                "type": "choice",
+                "name": "tool",
+                "choice": "a",
+                "probabilities": [
+                    {"value": "a", "probability": 0.7},
+                    {"value": "b", "probability": 0.3},
+                ],
+            }
+        ]
+    )
+    assert out["tool"]["probabilities"] == {"a": 0.7, "b": 0.3}

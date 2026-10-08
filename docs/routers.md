@@ -27,6 +27,23 @@ abstains, and its probability is reported as `p_none`.
 | `factored` | 1 | One request holding a "which server?" question plus a "which tool on server S?" question for every multi-tool server. Combined as P(server) × P(tool \| server). |
 | `hierarchical` | 2 | Pick servers first, then choose among the tools of the top `top_servers` servers. Tools on pruned servers stay in the ranking at p = 0. |
 
+### OpenRouter (`type: openrouter`)
+
+`POST https://openrouter.ai/api/alpha/decisions` with `OPENROUTER_API_KEY`, using TypeSafe's
+native schema (`model`, `state`, `questions: {name: {type, instructions, criteria}}`). Model
+ids are sent verbatim:
+
+| Model | id | Input $/1M | Context |
+|---|---|---:|---:|
+| TypeSafe Jev | `typesafe/jev-1.13` (pinned), `~typesafe/jev-latest` (alias) | 0.042 | 32K |
+| GPT-6 Luna Decisions | `openai/gpt-6-luna-decisions` | 0.10 | 1.1M |
+
+These models are not in OpenRouter's public `/models` list and can't be used on
+`/chat/completions`; call them by exact id here. The response's `usage.cost` is recorded per
+question, and `usd_per_1k_q` uses it instead of the configured price (`cost_source:
+measured`). Answers in either map or list shape are normalised. Optional headers:
+`OPENROUTER_REFERER`, `OPENROUTER_TITLE`.
+
 ### TypeSafe Jev (`type: jev`)
 
 Dialects:

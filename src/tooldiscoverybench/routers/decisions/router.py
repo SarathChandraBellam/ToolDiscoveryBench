@@ -20,13 +20,21 @@ probability is reported as ``raw["p_none"]``.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import time
 from collections import defaultdict
 from typing import Any
 
 from tooldiscoverybench.core.models import RouteResult, Tool
 from tooldiscoverybench.routers.base import Ranked, Router
-from tooldiscoverybench.routers.decisions.types import ChoiceQuestion, DecisionClient
+from tooldiscoverybench.routers.decisions.types import (
+    ChoiceQuestion,
+    DecisionClient,
+    DecisionResponse,
+)
+
+# provider-reported USD cost of every request made while routing one question
+_COSTS: contextvars.ContextVar[list[float] | None] = contextvars.ContextVar("costs", default=None)
 
 DEFAULT_INSTRUCTIONS = (
     "The state is a user's request to an AI agent. Pick the tool the agent should call FIRST "
@@ -76,6 +84,13 @@ class DecisionRouter(Router):
     def build_client(self, cfg: dict[str, Any]) -> DecisionClient:
         raise NotImplementedError
 
+    async def _ask(self, state: str, questions: dict[str, ChoiceQuestion]) -> DecisionResponse:
+        resp = await self.client.ask(state, questions)
+        costs = _COSTS.get()
+        if costs is not None and resp.cost_usd is not None:
+            costs.append(resp.cost_usd)
+        return resp
+
     def unavailable_reason(self) -> str | None:
         return None if self.client.configured else f"{self.client.api_key_env} not set"
 
@@ -111,6 +126,8 @@ class DecisionRouter(Router):
         self, question: str, tools: list[Tool], server_desc: dict[str, str]
     ) -> RouteResult:
         started = time.perf_counter()
+        costs: list[float] = []
+        _COSTS.set(costs)
         try:
             if self.mode == "flat":
                 ranked, tokens, calls, raw, p_none = await self._flat(question, tools)
@@ -137,13 +154,14 @@ class DecisionRouter(Router):
             output_tokens=0,
             calls=calls,
             raw={**(raw or {}), "p_none": p_none},
+            cost_usd=sum(costs) if costs else None,
             abstained=self.allow_abstain and p_none > best_tool,
         )
 
     async def _flat(self, q: str, tools: list[Tool]) -> _ModeResult:
         abstain = self.allow_abstain
         if len(tools) + abstain <= self.client.max_options:
-            resp = await self.client.ask(q, {"tool": self._tool_question(tools, with_none=abstain)})
+            resp = await self._ask(q, {"tool": self._tool_question(tools, with_none=abstain)})
             probs, p_none = _split_none(resp.probabilities("tool"))
             return _sorted(probs), resp.input_tokens, 1, None, p_none
 
@@ -160,9 +178,7 @@ class DecisionRouter(Router):
                 tid for tid, _ in _sorted(resp.probabilities("tool"))[: self.chunk_keep]
             )
         finalists = [t for t in tools if t.id in survivors]
-        final = await self.client.ask(
-            q, {"tool": self._tool_question(finalists, with_none=abstain)}
-        )
+        final = await self._ask(q, {"tool": self._tool_question(finalists, with_none=abstain)})
         tokens = sum(r.input_tokens for r in rounds) + final.input_tokens
         probs, p_none = _split_none(final.probabilities("tool"))
         return _sorted(probs), tokens, len(chunks) + 1, None, p_none
@@ -187,7 +203,7 @@ class DecisionRouter(Router):
                     f" Assume the agent will use the '{server}' server.",
                 )
 
-        resp = await self.client.ask(q, questions)
+        resp = await self._ask(q, questions)
         p_server, p_none = (
             _split_none(resp.probabilities("server"))
             if "server" in questions
@@ -210,7 +226,7 @@ class DecisionRouter(Router):
         server_q = self._server_question(tools, server_desc, with_none=self.allow_abstain)
         tokens, calls, p_none = 0, 0, 0.0
         if len(server_q.criteria) > 1:
-            resp = await self.client.ask(q, {"server": server_q})
+            resp = await self._ask(q, {"server": server_q})
             tokens, calls = resp.input_tokens, 1
             p_server, p_none = _split_none(resp.probabilities("server"))
         else:
@@ -223,7 +239,7 @@ class DecisionRouter(Router):
             ranked_one = [(only.id, p_server.get(only.server, 1.0))]
             return ranked_one, tokens, calls, {"server": p_server}, p_none
 
-        resp = await self.client.ask(q, {"tool": self._tool_question(candidates)})
+        resp = await self._ask(q, {"tool": self._tool_question(candidates)})
         ranked = _sorted(resp.probabilities("tool"))
         seen = {tid for tid, _ in ranked}
         # tools on pruned servers stay listed at p=0 so recall@k is defined

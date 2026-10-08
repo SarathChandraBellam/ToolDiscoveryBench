@@ -40,7 +40,37 @@ routers:
     enabled: ${TDB_EMBED:-false}        # needs `pip install fastembed`
     model: BAAI/bge-small-en-v1.5
 
-  # ---- TypeSafe Jev ----
+  # ---- Decision models via OpenRouter (one OPENROUTER_API_KEY for both) ----
+  # POST https://openrouter.ai/api/alpha/decisions · measured cost comes from usage.cost
+  - name: or-jev-flat
+    type: openrouter
+    model: typesafe/jev-1.13             # pinned; ~typesafe/jev-latest follows the alias
+    mode: flat
+    concurrency: 4
+    usd_per_m_input: 0.042               # fallback if usage.cost is missing; ctx 32K
+
+  - name: or-jev-factored
+    type: openrouter
+    model: typesafe/jev-1.13
+    mode: factored
+    concurrency: 4
+    usd_per_m_input: 0.042
+
+  - name: or-luna-flat
+    type: openrouter
+    model: openai/gpt-6-luna-decisions
+    mode: flat
+    concurrency: 4
+    usd_per_m_input: 0.10                # ctx 1.1M
+
+  - name: or-luna-factored
+    type: openrouter
+    model: openai/gpt-6-luna-decisions
+    mode: factored
+    concurrency: 4
+    usd_per_m_input: 0.10
+
+  # ---- TypeSafe Jev (direct) ----
   - name: jev-flat
     type: jev
     dialect: typesafe                   # POST https://api.typesafe.ai/v1/systemone

@@ -26,6 +26,7 @@ class DecisionResponse:
     input_tokens: int
     latency_ms: float
     raw: dict[str, Any] = field(default_factory=dict)
+    cost_usd: float | None = None  # provider-reported cost (OpenRouter returns usage.cost)
 
     def probabilities(self, question: str) -> dict[str, float]:
         """Probability per option for one question (falls back to the pick alone)."""
