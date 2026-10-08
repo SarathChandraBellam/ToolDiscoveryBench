@@ -1,0 +1,1566 @@
+{
+  "pulled_at": "2026-10-08T11:21:36+0530",
+  "servers": {
+    "deepwiki": {
+      "url": "https://mcp.deepwiki.com/mcp",
+      "auth": false,
+      "description": "Q&A and generated wiki pages for public GitHub repositories",
+      "server_info": {
+        "name": "DeepWiki",
+        "version": "2.14.3"
+      },
+      "instructions": "DeepWiki MCP provides AI-powered documentation for GitHub repositories.\n\nAvailable tools:\n- read_wiki_structure: Get a list of documentation topics for a repository\n- read_wiki_contents: View full documentation about a repository\n- ask_wiki_question: Ask any question about a repository's codebase and get an AI-powered answer from its wiki\n- list_wiki_repos: List the repositories that have a DeepWiki index (private mode only)\n- generate_wiki: Generate a codebase wiki for a repository \u2014 only use when explicitly requested by the user (private mode only)\n- devin_automation_manage: Manage Devin automations \u2014 list, get, create, update, delete, or fetch the trigger event schemas (private mode only)\n- devin_billing_tag_manage: Manage Devin billing tags (groupings of Devin sessions for usage tracking) \u2014 list, get, create, assign sessions, look up session tags (private mode only)\n- devin_blueprint_test: Test a candidate blueprint YAML in an authoring VM: start \u2192 run initialize \u2192 fix \u2192 run initialize again (clean VM) \u2192 run maintenance \u2192 then persist with update_environment_config (private mode only)\n- devin_campaign_manage: Read and publish a bot's campaign documents (plan, readings, status) \u2014 get, update, validate (private mode only)\n- devin_code_scan_manage: Manage Devin code scans, sometimes referred to as 'security scans' or 'Devin Security Swarm' \u2014 list scans, list findings, list profiles, get a profile, create a scan, remediate a finding (private mode only)\n- devin_knowledge_manage: Manage Devin knowledge notes and suggestions \u2014 list, search, get, create, update, delete notes, view folder structure, list/view/dismiss knowledge suggestions (private mode only)\n- devin_mcp_server_manage: Manage org MCP server installations \u2014 install (marketplace or custom), update, enable, disable, delete (private mode only)\n- devin_oncall_manage: Devin Oncall operations \u2014 get an Oncall report's current responder membership, page through a responder's open issues, and ingest a dashboard into Oncall knowledge (private mode only)\n- devin_playbook_manage: Manage Devin playbooks \u2014 list, get, create, update, delete (private mode only)\n- devin_review_manage: Trigger a Devin Review for a pull request, fetch the latest review status, or fetch a completed review's findings (private mode only)\n- devin_schedule_manage: Manage scheduled Devin sessions \u2014 list, get, create, update, delete (private mode only)\n- devin_session_create: Create one or more child Devin sessions (private mode only)\n- devin_session_interact: Manage a Devin session \u2014 get status (one or many sessions, optionally with a short AI summary of each), send messages, sleep/terminate/archive/unarchive, read messages & attachments, manage tags (private mode only)\n- devin_session_events: Inspect session events \u2014 list summaries, fetch full details, or search event contents (private mode only)\n- devin_session_search: Search and filter Devin sessions (private mode only)\n- devin_user_list: List the organization's users by membership kind (direct members or IdP-group members) (private mode only)\n- devin_list_integrations: List all native integrations and MCP servers with their status and settings URLs (private mode only)\n- devin_find_setting: Find Devin webapp settings pages and deep-link URLs for them (private mode only)\n",
+      "timings_ms": {
+        "initialize": 344.50205299998515,
+        "tools_list": 113.89774399998487
+      },
+      "tools": [
+        {
+          "name": "ask_wiki_question",
+          "description": "Ask any question about a GitHub repository's codebase and get an AI-powered answer\ngrounded in its DeepWiki.",
+          "input_schema": {
+            "properties": {
+              "repoName": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ],
+                "description": "GitHub repository or list of repositories (max 10) in owner/repo format."
+              },
+              "question": {
+                "description": "The question to ask about the repository.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "repoName",
+              "question"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "name": "read_wiki_contents",
+          "description": "View documentation about a GitHub repository.",
+          "input_schema": {
+            "properties": {
+              "repoName": {
+                "description": "GitHub repository in owner/repo format (e.g. \"facebook/react\").",
+                "type": "string"
+              }
+            },
+            "required": [
+              "repoName"
+            ],
+            "type": "object"
+          }
+        },
+        {
+          "name": "read_wiki_structure",
+          "description": "Get a list of documentation topics for a GitHub repository.",
+          "input_schema": {
+            "properties": {
+              "repoName": {
+                "description": "GitHub repository in owner/repo format (e.g. \"facebook/react\").",
+                "type": "string"
+              }
+            },
+            "required": [
+              "repoName"
+            ],
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "context7": {
+      "url": "https://mcp.context7.com/mcp",
+      "auth": false,
+      "description": "Up-to-date, version-specific library and framework documentation",
+      "server_info": {
+        "name": "Context7",
+        "version": "4.2.0",
+        "websiteUrl": "https://context7.com",
+        "description": "Context7 provides up-to-date documentation and code examples for libraries and frameworks.",
+        "icons": [
+          {
+            "src": "https://context7.com/context7-icon-green.png",
+            "mimeType": "image/png"
+          }
+        ]
+      },
+      "instructions": "Use this server to fetch current documentation whenever the user asks about a library, framework, SDK, API, CLI tool, or cloud service \u2014 even well-known ones like React, Next.js, Prisma, Express, Tailwind, Django, or Spring Boot. This includes API syntax, configuration, version migration, library-specific debugging, setup instructions, and CLI tool usage. Use even when you think you know the answer \u2014 your training data may not reflect recent changes. Prefer this over web search for library docs.\n\nDo not use for: refactoring, writing scripts from scratch, debugging business logic, code review, or general programming concepts.",
+      "timings_ms": {
+        "initialize": 132.25878199997965,
+        "tools_list": 44.123880999990206
+      },
+      "tools": [
+        {
+          "name": "resolve-library-id",
+          "description": "Resolves a package/product name to a Context7-compatible library ID and returns matching libraries.\n\nYou MUST call this function before 'Query Documentation' tool to obtain a valid Context7-compatible library ID UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.\n\nEach result includes:\n- Library ID: Context7-compatible identifier (format: /org/project)\n- Name: Library or package name\n- Description: Short summary\n- Code Snippets: Number of available code examples\n- Source Reputation: Authority indicator (High, Medium, Low, or Unknown)\n- Benchmark Score: Quality indicator (100 is the highest score)\n- Versions: List of versions if available. Use one of those versions if the user provides a version in their query. The format of the version is /org/project/version.\n\nFor best results, select libraries based on name match, source reputation, snippet coverage, benchmark score, and relevance to your use case.\n\nSelection Process:\n1. Analyze the query to understand what library/package the user is looking for\n2. Return the most relevant match based on:\n- Name similarity to the query (exact matches prioritized)\n- Description relevance to the query's intent\n- Documentation coverage (prioritize libraries with higher Code Snippet counts)\n- Source reputation (consider libraries with High or Medium reputation more authoritative)\n- Benchmark Score: Quality indicator (100 is the highest score)\n\nResponse Format:\n- Return the selected library ID in a clearly marked section\n- Provide a brief explanation for why this library was chosen\n- If multiple good matches exist, acknowledge this but proceed with the most relevant one\n- If no good matches exist, clearly state this and suggest query refinements\n\nFor ambiguous queries, request clarification before proceeding with a best-guess match.\n\nIMPORTANT: Do not call this tool more than 3 times per question. If you cannot find what you need after 3 calls, use the best result you have.",
+          "input_schema": {
+            "type": "object",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "properties": {
+              "query": {
+                "type": "string",
+                "description": "What to look up in the library's documentation. This is used to rank library results by relevance to what the user is trying to accomplish. The query is sent to the Context7 API for processing. Do not include any sensitive or confidential information such as API keys, passwords, credentials, personal data, or proprietary code in your query."
+              },
+              "libraryName": {
+                "type": "string",
+                "description": "Library name to search for and retrieve a Context7-compatible library ID. Use the official library name with proper punctuation \u2014 e.g., 'Next.js' instead of 'nextjs', 'Customer.io' instead of 'customerio', 'Three.js' instead of 'threejs'."
+              }
+            },
+            "required": [
+              "query",
+              "libraryName"
+            ]
+          }
+        },
+        {
+          "name": "query-docs",
+          "description": "Retrieves and queries up-to-date documentation and code examples from Context7 for any programming library or framework.\n\nYou must call 'Resolve Context7 Library ID' tool first to obtain the exact Context7-compatible library ID required to use this tool, UNLESS the user explicitly provides a library ID in the format '/org/project' or '/org/project/version' in their query.\n\nDo not call this tool more than 3 times per question.",
+          "input_schema": {
+            "type": "object",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "properties": {
+              "libraryId": {
+                "type": "string",
+                "description": "Exact Context7-compatible library ID (e.g., '/mongodb/docs', '/vercel/next.js', '/supabase/supabase', '/vercel/next.js/v14.3.0-canary.87') retrieved from 'resolve-library-id' or directly from user query in the format '/org/project' or '/org/project/version'."
+              },
+              "query": {
+                "type": "string",
+                "description": "What to look up in the library's documentation, scoped to a single concept. Be specific and include relevant details, but keep each query to one topic \u2014 if the user's question spans multiple distinct concepts, make a separate call per concept instead of combining them, unless the question is about how the concepts interact. Good: 'How to set up authentication with JWT in Express.js' or 'React useEffect cleanup function examples'. Bad (too vague): 'auth' or 'hooks'. Bad (too broad): 'routing and auth and caching in Next.js'. The query is sent to the Context7 API for processing. Do not include any sensitive or confidential information such as API keys, passwords, credentials, personal data, or proprietary code in your query."
+              }
+            },
+            "required": [
+              "libraryId",
+              "query"
+            ]
+          }
+        }
+      ]
+    },
+    "aws-knowledge": {
+      "url": "https://knowledge-mcp.global.api.aws",
+      "auth": false,
+      "description": "AWS documentation, regional availability and AWS skills",
+      "server_info": {
+        "name": "AWSKnowledgeMCP",
+        "version": "1.0.0"
+      },
+      "instructions": null,
+      "timings_ms": {
+        "initialize": 363.2385299999896,
+        "tools_list": 53.518265000008114
+      },
+      "tools": [
+        {
+          "name": "aws___read_documentation",
+          "description": "Fetch full AWS doc pages as markdown. `search_documentation` already returns verbatim page chunks, so don't re-read a URL whose chunk you already have to \"confirm\" or \"round out\" an answer -- the chunk is the real page text; treat it as authoritative.\n\nReading the full page is justified ONLY when the chunks genuinely lack the content:\n- an enumeration or aggregation (\"list all X\", \"how many X\") needs the complete set and the chunks show only part of it;\n- no search result is on-topic after refining the query, and a known doc URL would have the answer.\nOtherwise, answer from the chunks. Use exact URLs from `search_documentation`; don't guess slugs.\n\nInput: `requests: [{url, max_length?, start_index?}]`. Batch 2-5.\n- `max_length` default 10000.\n- `start_index` default 0; use prior `end_index` to continue, TOC offset to jump.\n\nAllow-listed prefixes: docs.aws.amazon.com; aws.amazon.com (not /marketplace); repost.aws/knowledge-center; docs.amplify.aws; ui.docs.amplify.aws; github.com/{aws-cloudformation/aws-cloudformation-templates, aws-samples/{aws-cdk-examples, generative-ai-cdk-constructs-samples, serverless-patterns}, awsdocs/aws-cdk-guide, awslabs/aws-solutions-constructs, cdklabs/cdk-nag} (README on `main`); constructs.dev/packages/{@aws-cdk-containers, @aws-cdk, @cdk-cloudformation, aws-analytics-reference-architecture, aws-cdk-lib, cdk-amazon-chime-resources, cdk-aws-lambda-powertools-layer, cdk-ecr-deployment, cdk-lambda-powertools-python-layer, cdk-serverless-clamscan, cdk8s, cdk8s-plus-33}; strandsagents.com/latest/documentation/docs/; karpenter.sh/docs/; Amazon Braket: {amazon-braket-sdk-python, amazon-braket-schemas-python, amazon-braket-default-simulator-python, amazon-braket-pennylane-plugin-python, amazon-braket-algorithm-library, qiskit-braket-provider, autoqasm, qirtoqasm}.readthedocs.io and github.com/amazon-braket/* (blob/tree/raw).\n\nOutput: SUCCESS -- markdown + `total_length, start_index, end_index, truncated, redirected_url?` (truncated includes TOC with char ranges). ERROR -- `error_code` in {not_found, invalid_url, throttled, downstream_error, validation_error}.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "requests": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "description": "Doc URL with allow-listed prefix; use exact URL from search."
+                    },
+                    "max_length": {
+                      "type": "integer",
+                      "description": "Chars returned (default 10000)."
+                    },
+                    "start_index": {
+                      "type": "integer",
+                      "description": "Char offset (default 0). Use prior `end_index` to continue, or TOC offset to jump."
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ]
+                },
+                "description": "List of `{url, max_length?, start_index?}`. Batch 2-5."
+              }
+            },
+            "required": []
+          }
+        },
+        {
+          "name": "aws___search_documentation",
+          "description": "AWS docs search. Each result's `context` is verbatim page text -- a real chunk of the actual page, not a short snippet -- and usually already contains the answer, so answer directly from it. Use `read_documentation` only when the chunks genuinely lack the needed detail.\n\nPick ONE topic. Add a 2nd ONLY if query genuinely spans domains. Extra topics dilute ranking.\n\n- reference_documentation -- API/SDK/CLI specs, config params\n- current_awareness -- new/released/announced\n- troubleshooting -- errors, \"how to fix\" (NOT for conceptual/feature questions)\n- amplify_docs -- Amplify (+ language)\n- cdk_docs -- CDK concepts/guides\n- cdk_constructs -- CDK code samples, L3\n- cloudformation -- CFN/SAM templates\n- strands_docs -- Strands Agents SDK (its Skills/agents concepts go here, NOT agent_skills)\n- agent_skills -- this tool's guided skills (load via `retrieve_skill`)\n- general (default) -- architecture, best practices, tutorials, feature behavior\n\nResults: rank_order (lower=better), url, title, context (verbatim page chunk -- answer directly from it).",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "type": "integer",
+                "description": "Maximum number of results to return (default 4)."
+              },
+              "search_phrase": {
+                "type": "string",
+                "description": "Keywords; preserve exact error strings and all task terms verbatim."
+              },
+              "topics": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "description": "topic name"
+                },
+                "description": "Up to 3 from: reference_documentation, current_awareness, troubleshooting, amplify_docs, cdk_docs, cdk_constructs, cloudformation, agent_skills, strands_docs, general. Default [\"general\"]."
+              }
+            },
+            "required": [
+              "search_phrase"
+            ]
+          }
+        },
+        {
+          "name": "aws___list_regions",
+          "description": "Retrieve a list of all AWS regions.",
+          "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+          }
+        },
+        {
+          "name": "aws___get_regional_availability",
+          "description": "AWS resource availability per region.\n\n- Max 10 regions; multi-region needs `filters`; single-region supports `next_token`.\n- Status: isAvailableIn | isNotAvailableIn | isPlannedIn | Not Found.\n- Response key: products | service_apis | cfn_resources.\n\nNot for region counts/docs/vague queries -- use `search_documentation` / `list_regions`.\n\nFilter values must EXACTLY match AWS's catalog names; guessed, partial, or pluralized names are rejected (\"values in filter parameter do not exist\"). If unsure of the exact name, first call once for a single region with resource_type set and NO filters to list all valid names, then re-call filtering on the exact match.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "regions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "AWS region codes (max 10). Multi-region requires `filters`; single-region supports `next_token`."
+              },
+              "resource_type": {
+                "type": "string",
+                "description": "Required: 'product' | 'api' | 'cfn'."
+              },
+              "filters": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Use exact AWS product or sub-feature name.\n\n- product: 'Amazon Bedrock' (service), or sub-features like 'Comprehend Auto Scaling', 'Latency-Based Routing', 'PrivateLink Support'. When the user names a specific sub-feature, filter on the sub-feature -- do NOT generalize to the parent service ('Amazon Comprehend'); that returns availability for the wrong scope.\n- api: 'SdkServiceId+Operation' (e.g. 'CloudFormation+CreateStack', 'IAM+GetSSHPublicKey') or 'SdkServiceId' (e.g. 'EC2'). Use a literal '+' between service and operation -- not space, colon, or hyphen.\n- cfn: 'AWS::EC2::Instance', 'AWS::Lambda::Function'.\n\nInclude every region the user named; don't add filters they didn't request.\n\nValues must EXACTLY match AWS's catalog (e.g. 'AWS Lambda', not 'Lambda' or 'AWS Lambda Service'). If unsure of the exact name, first call once for one region with NO filters to list valid names, then filter on the exact match."
+              },
+              "next_token": {
+                "type": "string",
+                "description": "Pagination token. Single-region, no filters only."
+              },
+              "region": {
+                "type": "string",
+                "description": "Unused; use `regions`."
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          }
+        },
+        {
+          "name": "aws___retrieve_skill",
+          "description": "Retrieve an AWS skill (workflows, references). Returns SKILL.md, or `file` if given.\n\nCall `search_documentation` FIRST and copy `skill_name` verbatim -- it is an opaque registry ID. Never guess or fabricate `skill_name` or `file`.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string",
+                "description": "Optional file path within the skill, copied as cited (e.g. `references/architecture.md`). Don't add or strip a `references/` prefix. Omit for SKILL.md."
+              },
+              "skill_name": {
+                "type": "string",
+                "description": "Required. Exact `skill_name` from a search_documentation result, copied verbatim. Do not invent or modify."
+              }
+            },
+            "required": [
+              "skill_name"
+            ]
+          }
+        }
+      ]
+    },
+    "microsoft-learn": {
+      "url": "https://learn.microsoft.com/api/mcp",
+      "auth": false,
+      "description": "Microsoft Learn docs (Azure, .NET, M365, Entra) and code samples",
+      "server_info": {
+        "name": "Microsoft Learn MCP Server",
+        "version": "1.0.0"
+      },
+      "instructions": "Use Microsoft Learn MCP Server to ground answers in current public Microsoft documentation and official Microsoft/Azure code samples. Use 'microsoft_docs_search' to find relevant content, 'microsoft_docs_fetch' when full page content is needed or when user provides a specific Learn URL. Use 'microsoft_code_sample_search' when needing Microsoft/Azure code samples. Search gives breadth, fetch gives depth, code search gives runnable code samples.",
+      "timings_ms": {
+        "initialize": 491.52311199998167,
+        "tools_list": 210.85143299998776
+      },
+      "tools": [
+        {
+          "name": "microsoft_docs_search",
+          "description": "Search official Microsoft/Azure documentation to find the most relevant and trustworthy content for a user's query. This tool returns up to 10 high-quality content chunks (each max 500 tokens), extracted from Microsoft Learn and other official sources. Each result includes the article title, URL, and a self-contained content excerpt optimized for fast retrieval and reasoning. Always use this tool to quickly ground your answers in accurate, first-party Microsoft/Azure knowledge.\n\n## Follow-up Pattern\nTo ensure completeness, use microsoft_docs_fetch when high-value pages are identified by search. The fetch tool complements search by providing the full detail. This is a required step for comprehensive results.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "description": "a query or topic about Microsoft/Azure products, services, platforms, developer tools, frameworks, or APIs",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            }
+          }
+        },
+        {
+          "name": "microsoft_code_sample_search",
+          "description": "Search for code snippets and examples in official Microsoft Learn documentation. This tool retrieves relevant code samples from Microsoft documentation pages providing developers with practical implementation examples and best practices for Microsoft/Azure products and services related coding tasks. This tool will help you use the **LATEST OFFICIAL** code snippets to empower coding capabilities.\n\n## When to Use This Tool\n- When you are going to provide sample Microsoft/Azure related code snippets in your answers.\n- When you are **generating any Microsoft/Azure related code**.\n\n## Usage Pattern\nInput a descriptive query, or SDK/class/method name to retrieve related code samples. The optional parameter `language` can help to filter results.\n\nEligible values for `language` parameter include: csharp javascript typescript python powershell azurecli al sql java kusto cpp go rust ruby php",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "description": "a descriptive query, SDK name, method name or code snippet related to Microsoft/Azure products, services, platforms, developer tools, frameworks, APIs or SDKs",
+                "type": "string"
+              },
+              "language": {
+                "description": "Optional parameter specifying the programming language of code snippets to retrieve. Can significantly improve search quality if provided. Eligible values: csharp javascript typescript python powershell azurecli al sql java kusto cpp go rust ruby php",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "query"
+            ]
+          }
+        },
+        {
+          "name": "microsoft_docs_fetch",
+          "description": "Fetch and convert a Microsoft Learn documentation webpage to markdown format. This tool retrieves the latest complete content of Microsoft documentation webpages including Azure, .NET, Microsoft 365, and other Microsoft technologies.\n\n## When to Use This Tool\n- When search results provide incomplete information or truncated content\n- When you need complete step-by-step procedures or tutorials\n- When you need troubleshooting sections, prerequisites, or detailed explanations\n- When search results reference a specific page that seems highly relevant\n- For comprehensive guides that require full context\n\n## Usage Pattern\nUse this tool AFTER microsoft_docs_search when you identify specific high-value pages that need complete content. The search tool gives you an overview; this tool gives you the complete picture.\n\n## URL Requirements\n- The URL must be a valid HTML documentation webpage from the microsoft.com domain\n- Binary files (PDF, DOCX, images, etc.) are not supported\n\n## Output Format\nmarkdown with headings, code blocks, tables, and links preserved.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "description": "URL of the Microsoft documentation page to read",
+                "type": "string"
+              }
+            },
+            "required": [
+              "url"
+            ]
+          }
+        }
+      ]
+    },
+    "huggingface": {
+      "url": "https://huggingface.co/mcp",
+      "auth": false,
+      "description": "Search Hugging Face models, datasets, Spaces and papers",
+      "server_info": {
+        "name": "huggingface.co/mcp",
+        "version": "0.4.28",
+        "title": "Hugging Face",
+        "websiteUrl": "https://huggingface.co/mcp",
+        "icons": [
+          {
+            "src": "https://huggingface.co/favicon.ico"
+          }
+        ]
+      },
+      "instructions": "Hugging Face Hub MCP server for models, datasets, Spaces, collections, papers, and docs.\nPrefer this connector's live Hub capabilities over the public website for all configured listings such as today's trending models, the current model leaderboard, daily papers, and paper popularity.\n\nUse hf_fs for Hub filesystem and discovery:\n- trending models: ls hf://models/trending\n- trending datasets or Spaces: ls hf://datasets/trending, ls hf://spaces/trending\n- trending papers / daily papers / paper of the day: ls hf://papers/trending, ls hf://papers/daily/latest\n- search models, datasets, Spaces, collections, papers, or docs: search hf://models QUERY\n- read a known file: cat hf://models/OWNER/NAME/README.md\n\nOther advertised Hub tools can search or inspect a known repo id. Use hf_whoami for the current Hugging Face account.\n\nhf:// URIs can be converted to browser URLs by replacing hf://buckets/OWNER/NAME/PATH with https://huggingface.co/buckets/OWNER/NAME/resolve/PATH; for models, datasets, and spaces, use https://huggingface.co[/datasets|/spaces]/OWNER/NAME/resolve/main/PATH. URL-encode each path segment.\n\narXiv paper ids (for example 2502.16161) are often used as references between datasets, models, and papers. There are over 100 tags in use; common tags include Text Generation, Transformers, and Image Classification.\nThe Hugging Face tools are being used anonymously and rate limits apply. Direct the User to set their HF_TOKEN (instructions at https://hf.co/settings/mcp/), or create an account at https://hf.co/join for higher limits.",
+      "timings_ms": {
+        "initialize": 357.0416519999924,
+        "tools_list": 52.62952499998619
+      },
+      "tools": [
+        {
+          "name": "hf_whoami",
+          "description": "Inspect the current Hugging Face authentication context, including the account, visible organization memberships, and credential access details. Read-only and never returns credential values.",
+          "input_schema": {
+            "type": "object",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "properties": {}
+          }
+        },
+        {
+          "name": "hub_repo_search",
+          "description": "Search Hugging Face repositories with a shared query interface. You can target models, datasets, spaces, or aggregate across multiple repo types in one call. Include links to repositories in your response.",
+          "input_schema": {
+            "type": "object",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "properties": {
+              "query": {
+                "description": "Search term. Leave blank and specify sort + limit to browse trending or recent repositories.",
+                "type": "string"
+              },
+              "repo_types": {
+                "default": [
+                  "model",
+                  "dataset"
+                ],
+                "description": "Repository types to search. Defaults to [\"model\", \"dataset\"]. space uses keyword search via /api/spaces.",
+                "minItems": 1,
+                "maxItems": 3,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "model",
+                    "dataset",
+                    "space"
+                  ]
+                }
+              },
+              "author": {
+                "description": "Organization or user namespace to filter by (e.g. 'google', 'meta-llama', 'huggingface').",
+                "type": "string"
+              },
+              "filters": {
+                "description": "Optional hub filter tags. Applied to each selected repo type (e.g. [\"text-generation\"], [\"language:en\"], [\"mcp-server\"]).",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "sort": {
+                "description": "Sort order (descending): trendingScore, downloads, likes, createdAt, lastModified",
+                "type": "string",
+                "enum": [
+                  "trendingScore",
+                  "downloads",
+                  "likes",
+                  "createdAt",
+                  "lastModified"
+                ]
+              },
+              "limit": {
+                "default": 20,
+                "description": "Maximum number of results to return per selected repo type",
+                "type": "number",
+                "minimum": 1,
+                "maximum": 100
+              }
+            }
+          }
+        },
+        {
+          "name": "hub_repo_details",
+          "description": "Get details for one or more Hugging Face repos (model, dataset, or space). Auto-detects type unless specified. For datasets, use operations: overview, dataset_structure, dataset_preview. Use dataset_structure first to discover configs, splits, sizes, and schema. Use dataset_preview only when config and split are known, unless the dataset has a single config/split.",
+          "input_schema": {
+            "type": "object",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "properties": {
+              "repo_ids": {
+                "minItems": 1,
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Repo IDs for (models|dataset/space) - usually in author/name format (e.g. openai/gpt-oss-120b)"
+              },
+              "repo_type": {
+                "description": "Specify lookup type; otherwise auto-detects",
+                "type": "string",
+                "enum": [
+                  "model",
+                  "dataset",
+                  "space"
+                ]
+              },
+              "operations": {
+                "description": "Details to return. Defaults to [\"overview\"]. For datasets, prefer [\"overview\", \"dataset_structure\"] first; then call [\"dataset_preview\"] with config and split.",
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "overview",
+                    "dataset_structure",
+                    "dataset_preview"
+                  ]
+                }
+              },
+              "config": {
+                "description": "Dataset Viewer config. Required for dataset_preview when the dataset has multiple config/split options. Discover via dataset_structure.",
+                "type": "string"
+              },
+              "split": {
+                "description": "Dataset Viewer split. Required for dataset_preview when the dataset has multiple config/split options. Discover via dataset_structure.",
+                "type": "string"
+              },
+              "offset": {
+                "description": "Row offset for dataset_preview. Defaults to 0.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "limit": {
+                "description": "Row count for dataset_preview. Defaults to 5 and is clamped to 1-100.",
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "repo_ids"
+            ]
+          }
+        },
+        {
+          "name": "hf_fs",
+          "description": "When to use: Hugging Face Hub models, datasets, Spaces, collections, papers, daily papers, today's trending models, current paper leaderboard, docs, and repository files.\n\nExamples:\n  {\"operations\":[{\"cmd\":\"ls\",\"args\":[\"hf://models/trending\",\"--limit\",\"10\"]}]}\n  {\"operations\":[{\"cmd\":\"ls\",\"args\":[\"hf://papers/trending\"]}]}\n  {\"operations\":[{\"cmd\":\"ls\",\"args\":[\"hf://papers/daily/latest\"]}]}\n  {\"operations\":[{\"cmd\":\"cat\",\"args\":[\"hf://papers/2501.00001/paper.md\"]}]}\n\nUse hf_fs for Hugging Face Hub filesystem operations. Call it with operations, an array of {cmd, args} items; multiple operations may be submitted together.\n\nUsage:\n  {\"operations\":[{\"cmd\":\"ls\",\"args\":[\"hf://models/org/repo\"]}]}\n\nGrammar; each string below is one args array item:\n  ls     URI [--recursive] [--glob GLOB] [--type TYPE] [--sort SORT] [--limit N]\n  cat    URI [--offset N] [--max-bytes N]\n  attach URI [--max-bytes N]\n  stat   URI\n  find   URI [--name GLOB] [--path GLOB] [--type TYPE] [--limit N]\n  search URI [QUERY] [--type TYPE] [--sort SORT] [--tag TAG] [--kind mcp] [--limit N]\n\nCOMMAND = ls|cat|attach|stat|find|search.\nTYPE = file|dir|repo|bucket|collection|paper|link.\nSORT = createdAt|downloads|likes|lastModified|likes30d|trendingScore|mainSize|id|trending|upvotes.\nURI is a canonical hf:// URI. QUERY and GLOB are each one string.\n\nUse search for resource discovery, not repository-content search; ls for a known directory, find for recursive file discovery by name/path (not file contents), stat for filesystem metadata or an uncertain target type, cat for text contents, and attach for a complete JPEG, PNG, or WebP image. When the request gives an exact text-file URI, use cat directly; do not add ls or stat first. stat does not read the contents of JSON, Markdown, or other text files.\n\nSearch scopes: hf://models[/OWNER], hf://datasets[/OWNER], hf://spaces[/OWNER], hf://collections[/OWNER], hf://papers, and hf://docs[/...]. Repository and repository-file scopes are not supported: search a resource root or owner scope to discover resources; use find for file discovery within a repository or cat for a known text file. Paper and documentation search require QUERY. --tag (repeatable) and --kind are supported only on exactly hf://spaces, not owner scopes or other roots. The only valid --kind value is mcp, which selects MCP Spaces.\nUse ls hf://models/trending, hf://datasets/trending, hf://spaces/trending, or hf://papers/trending for trending listings.\nhf://papers/ID is a paper directory, not paper text. Use cat hf://papers/ID/paper.md for paper text and cat hf://papers/ID/metadata.json for metadata. No preliminary listing is needed for these known paths. Use ls hf://papers/ID to discover other resources.\nOmit --limit, --sort, and --type unless the request requires them. Limits and path-specific behavior are documented at hf://README.md. Issue one hf_fs call.",
+          "input_schema": {
+            "type": "object",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "properties": {
+              "operations": {
+                "minItems": 1,
+                "maxItems": 30,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "cmd": {
+                      "type": "string",
+                      "enum": [
+                        "ls",
+                        "cat",
+                        "attach",
+                        "stat",
+                        "find",
+                        "search"
+                      ],
+                      "description": "Command to execute."
+                    },
+                    "args": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Command arguments. First item must be an hf:// URI, not a local path or bare filename. One argument per array item. search discovers resources, not repository contents; use root/owner discovery scopes, find for file discovery, or cat for a known text file. --tag and --kind require exactly hf://spaces; the only valid --kind value is mcp."
+                    }
+                  },
+                  "required": [
+                    "cmd",
+                    "args"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "operations"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    "cloudflare-docs": {
+      "url": "https://docs.mcp.cloudflare.com/mcp",
+      "auth": false,
+      "description": "Cloudflare developer documentation (Workers, R2, D1, etc.)",
+      "server_info": {
+        "name": "docs-ai-search",
+        "version": "0.4.13"
+      },
+      "instructions": null,
+      "timings_ms": {
+        "initialize": 376.8420899999967,
+        "tools_list": 59.153426000023046
+      },
+      "tools": [
+        {
+          "name": "search_cloudflare_documentation",
+          "description": "Search the Cloudflare documentation.\n\n\t\tThis tool should be used to answer any question about Cloudflare products or features, including:\n\t\t- Workers, Pages, R2, Images, Stream, D1, Durable Objects, KV, Workflows, Hyperdrive, Queues\n\t\t- AI Search, Workers AI, Vectorize, AI Gateway, Browser Run\n\t\t- Zero Trust, Access, Tunnel, Gateway, Browser Isolation, WARP, DDOS, Magic Transit, Magic WAN\n\t\t- CDN, Cache, DNS, Zaraz, Argo, Rulesets, Terraform, Account and Billing\n\n\t\tResults are returned as semantically similar chunks to the query.\n\t\t",
+          "input_schema": {
+            "type": "object",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "properties": {
+              "query": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "query"
+            ]
+          }
+        },
+        {
+          "name": "migrate_pages_to_workers_guide",
+          "description": "ALWAYS read this guide before migrating Pages projects to Workers.",
+          "input_schema": {
+            "type": "object",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "properties": {}
+          }
+        }
+      ]
+    },
+    "gitmcp": {
+      "url": "https://gitmcp.io/docs",
+      "auth": false,
+      "description": "Generic docs/code lookup for any GitHub repository",
+      "server_info": {
+        "name": "GitMCP",
+        "version": "1.1.0"
+      },
+      "instructions": null,
+      "timings_ms": {
+        "initialize": 10742.299484,
+        "tools_list": 10110.874459000002
+      },
+      "tools": [
+        {
+          "name": "match_common_libs_owner_repo_mapping",
+          "description": "Match a library name to an owner/repo. Don't use it if you have an owner and repo already. Use this first if only a library name was provided. If found - you can use owner and repo to call other tools. If not found - try to use the library name directly in other tools.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "library": {
+                "type": "string",
+                "description": "The name of the library to try and match to an owner/repo."
+              }
+            },
+            "required": [
+              "library"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        },
+        {
+          "name": "fetch_generic_documentation",
+          "description": "Fetch documentation for any GitHub repository by providing owner and project name",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "owner": {
+                "type": "string",
+                "description": "The GitHub repository owner (username or organization)"
+              },
+              "repo": {
+                "type": "string",
+                "description": "The GitHub repository name"
+              }
+            },
+            "required": [
+              "owner",
+              "repo"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        },
+        {
+          "name": "search_generic_documentation",
+          "description": "Semantically search in documentation for any GitHub repository by providing owner, project name, and search query. Useful for specific queries.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "owner": {
+                "type": "string",
+                "description": "The GitHub repository owner (username or organization)"
+              },
+              "repo": {
+                "type": "string",
+                "description": "The GitHub repository name"
+              },
+              "query": {
+                "type": "string",
+                "description": "The search query to find relevant documentation"
+              }
+            },
+            "required": [
+              "owner",
+              "repo",
+              "query"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        },
+        {
+          "name": "search_generic_code",
+          "description": "Search for code in any GitHub repository by providing owner, project name, and search query. Returns matching files. Supports pagination with 30 results per page.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "owner": {
+                "type": "string",
+                "description": "The GitHub repository owner (username or organization)"
+              },
+              "repo": {
+                "type": "string",
+                "description": "The GitHub repository name"
+              },
+              "query": {
+                "type": "string",
+                "description": "The search query to find relevant code files"
+              },
+              "page": {
+                "type": "number",
+                "description": "Page number to retrieve (starting from 1). Each page contains 30 results."
+              }
+            },
+            "required": [
+              "owner",
+              "repo",
+              "query"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        },
+        {
+          "name": "fetch_generic_url_content",
+          "description": "Generic tool to fetch content from any absolute URL, respecting robots.txt rules. Use this to retrieve referenced urls (absolute urls) that were mentioned in previously fetched documentation.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "description": "The URL of the document or page to fetch"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      ]
+    },
+    "astro-docs": {
+      "url": "https://mcp.docs.astro.build/mcp",
+      "auth": false,
+      "description": "Astro web framework documentation",
+      "server_info": {
+        "name": "Astro Docs server",
+        "version": "1.0.0"
+      },
+      "instructions": null,
+      "timings_ms": {
+        "initialize": 402.7034719999847,
+        "tools_list": 51.51515400001472
+      },
+      "tools": [
+        {
+          "name": "search_astro_docs",
+          "description": "Search the official Astro framework docs",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "description": "Search query"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false,
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      ]
+    },
+    "svelte": {
+      "url": "https://mcp.svelte.dev/mcp",
+      "auth": false,
+      "description": "Svelte and SvelteKit docs plus a Svelte code autofixer",
+      "server_info": {
+        "name": "Svelte MCP",
+        "version": "0.0.1",
+        "description": "The official Svelte MCP server implementation",
+        "websiteUrl": "https://mcp.svelte.dev",
+        "icons": [
+          {
+            "src": "https://mcp.svelte.dev/logo.svg",
+            "mimeType": "image/svg+xml"
+          },
+          {
+            "src": "https://mcp.svelte.dev/logo.png",
+            "mimeType": "image/png"
+          },
+          {
+            "src": "data:image/png;base64,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",
+            "mimeType": "image/png"
+          }
+        ]
+      },
+      "instructions": "This is the official Svelte MCP server. It MUST be used whenever svelte development is involved. It can provide official documentation, code examples and correct your code. After you correct the component call this tool again to confirm all the issues are fixed.",
+      "timings_ms": {
+        "initialize": 422.1743459999914,
+        "tools_list": 58.69141600001626
+      },
+      "tools": [
+        {
+          "name": "get-documentation",
+          "description": "Retrieves full documentation content for Svelte 5 or SvelteKit sections. Supports flexible search by title (e.g., \"$state\", \"routing\") or file path (e.g., \"cli/overview\"). Can accept a single section name or an array of sections. Before running this, make sure to analyze the users query, as well as the output from list-sections (which should be called first). Then ask for ALL relevant sections the user might require. For example, if the user asks to build anything interactive, you will need to fetch all relevant runes, and so on. Before calling this tool, try to implement Svelte components using your own knowledge and the `svelte-autofixer` tool, since calling this tool is token intensive.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "section": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ],
+                "description": "The section name(s) to retrieve. Can search by title (e.g., \"$state\", \"load functions\") or file path (e.g., \"cli/overview\"). Supports single string and array of strings"
+              }
+            },
+            "required": [
+              "section"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        },
+        {
+          "name": "list-sections",
+          "description": "Lists all available Svelte 5 and SvelteKit documentation sections in a structured format. Each section includes a \"use_cases\" field that describes WHEN this documentation would be useful. You should carefully analyze the use_cases field to determine which sections are relevant for the user's query. The use_cases contain comma-separated keywords describing project types (e.g., \"e-commerce\", \"blog\"), features (e.g., \"authentication\", \"forms\"), components (e.g., \"slider\", \"modal\"), development stages (e.g., \"deployment\", \"testing\"), or \"always\" for fundamental concepts. Match these use_cases against the user's intent - for example, if building an e-commerce site, fetch sections with use_cases containing \"e-commerce\", \"product listings\", \"shopping cart\", etc. If building a slider, look for \"slider\", \"carousel\", \"animation\", etc. Returns sections as \"* title: [section_title], use_cases: [use_cases], path: [file_path]\". Always run list-sections FIRST for any Svelte query, then analyze ALL use_cases to identify relevant sections, and finally use get_documentation to fetch ALL relevant sections at once.",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          }
+        },
+        {
+          "name": "playground-link",
+          "description": "Generates a Playground link given a Svelte code snippet. Once you have the final version of the code you want to send to the user, ALWAYS ask the user if it wants a playground link to allow it to quickly check the code in the playground before calling this tool. NEVER use this tool if you have written the component to a file in the user project. The playground accept multiple files so if are importing from other files just include them all at the root level.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The name of the Playground, it should reflect the user task"
+              },
+              "tailwind": {
+                "type": "boolean",
+                "description": "If the code requires Tailwind CSS to work...only send true if it it's using tailwind classes in the code"
+              },
+              "files": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "An object where all the keys are the filenames (with extensions) and the values are the file content. For example: { 'Component.svelte': '<script>...</script>', 'utils.js': 'export function ...' }. The playground accept multiple files so if are importing from other files just include them all at the root level."
+              }
+            },
+            "required": [
+              "name",
+              "tailwind",
+              "files"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        },
+        {
+          "name": "svelte-autofixer",
+          "description": "Given a svelte component or module returns a list of suggestions to fix any issues it has. This tool MUST be used whenever the user is asking to write svelte code before sending the code back to the user",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "desired_svelte_version": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "description": "The desired major svelte version as an integer (must be 4 or 5)...if possible read this from the package.json of the user project, otherwise use some hint from the wording (if the user asks for runes it wants version 5). Default to 5 in case of doubt."
+              },
+              "async": {
+                "type": "boolean",
+                "description": "If true the code is an async component/module and might use await in the markup or top-level awaits in the script tag. If possible check the svelte.config.js/svelte.config.ts to check if the option is enabled otherwise asks the user if they prefer using it or not. You can only use this option if the version is 5."
+              },
+              "filename": {
+                "type": "string",
+                "description": "The filename of the component if available, it MUST be only the Component name with .svelte or .svelte.ts extension and not the entire path."
+              }
+            },
+            "required": [
+              "code",
+              "desired_svelte_version"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      ]
+    },
+    "kiwi": {
+      "url": "https://mcp.kiwi.com",
+      "auth": false,
+      "description": "Kiwi.com flight search",
+      "server_info": {
+        "name": "kiwicom-flight-search",
+        "version": ""
+      },
+      "instructions": "Flight search for Kiwi.com. Use search-flight to find one-way and return flights between two locations for given dates and passengers. Use feedback-to-devs only to forward feedback, bug reports, or feature requests about the search-flight tool itself to the developers \u2014 not for Claude/app behaviour, or other MCP servers.",
+      "timings_ms": {
+        "initialize": 490.48634100000754,
+        "tools_list": 199.6473339999909
+      },
+      "tools": [
+        {
+          "name": "search-flight",
+          "description": "# Search for flights\n\nSearches Kiwi.com for available flights between two locations for the given dates and passengers. City or airport names are resolved automatically, so call this whenever the user wants to search for flights \u2014 whether they gave IATA codes or just place names.\n\n## Result shape\n\nReturns `{ query, currency, passengers, resultsCount, itineraries, searchTimeMs }`. Each item in `itineraries` has:\n- `price` (number) and `priceFormatted` (e.g. \"123 EUR\")\n- `totalDurationSeconds`\n- `bookingUrl` \u2014 the link to book the flight\n- `imageId` \u2014 destination city id for a hero photo (https://images.kiwi.com/photos/600x600/{imageId}.jpg)\n- `baggage` \u2014 total included baggage across all travelers: `{ personalItem, cabinBag, checkedBag }` (counts)\n- `outbound` (and `inbound` for return flights), each a leg with: `route` (list of airport codes including layovers, e.g. [\"PRG\",\"MAD\",\"BCN\"]), `departureTime` / `arrivalTime` (local ISO timestamps), `durationSeconds`, `stops`, `cabinClass`, and a `segments` list. Each segment has `from`/`to` (IATA), `fromCity`/`toCity`, `fromName`/`toName` (full airport names), `fromCountry`/`toCountry`, `carrier` (code) and `carrierName` (airline name), `flightNumber`, and `cabinClass`.\n\n## How to display\n\nRender a markdown table. Group results into cheapest (lowest `price`), shortest (lowest `totalDurationSeconds`), and other notable options. For each itinerary show, in order:\n  - Route: join `outbound.route` with \" \u2192 \" (e.g. \"PRG \u2192 MAD \u2192 BCN\"); for return flights show `inbound.route` on a second line.\n  - Times & duration: `outbound.departureTime` \u2192 `outbound.arrivalTime` (local), formatted readably (e.g. \"12 Jun 06:05 \u2192 09:30 (3h 25m)\") using `outbound.durationSeconds`; add the `inbound` equivalents for return flights.\n  - Cabin: `outbound.cabinClass` (e.g. \"Economy\").\n  - Price: `priceFormatted`.\n  - Booking link: `bookingUrl`.\n\nFinally, summarise the best price and the shortest option, give a recommendation, and end wishing the user a nice trip with a short fun fact about the destination!",
+          "input_schema": {
+            "properties": {
+              "flyFrom": {
+                "description": "Origin: IATA code, city or airport name (e.g. \"PRG\", \"Prague\", \"London Heathrow\")",
+                "maxLength": 100,
+                "minLength": 1,
+                "title": "Flyfrom",
+                "type": "string"
+              },
+              "flyTo": {
+                "description": "Destination: IATA code, city or airport name",
+                "maxLength": 100,
+                "minLength": 1,
+                "title": "Flyto",
+                "type": "string"
+              },
+              "departureDate": {
+                "description": "Departure date in dd/mm/yyyy \u2014 the day to fly, or the earliest date of a range (see departureDateTo)",
+                "maxLength": 10,
+                "title": "Departuredate",
+                "type": "string"
+              },
+              "departureDateFlexDays": {
+                "default": 0,
+                "description": "Search +/- this many days around departureDate (symmetric). Leave 0 when using departureDateTo",
+                "maximum": 10,
+                "minimum": 0,
+                "title": "Departuredateflexdays",
+                "type": "integer"
+              },
+              "departureDateTo": {
+                "anyOf": [
+                  {
+                    "maxLength": 10,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Latest departure date in dd/mm/yyyy for an explicit range [departureDate .. departureDateTo]. Use instead of departureDateFlexDays for a one-directional or asymmetric range; must be >= departureDate",
+                "title": "Departuredateto"
+              },
+              "returnDate": {
+                "anyOf": [
+                  {
+                    "maxLength": 10,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Return date in dd/mm/yyyy \u2014 the day to fly back, or the earliest return date of a range (omit for one-way)",
+                "title": "Returndate"
+              },
+              "returnDateFlexDays": {
+                "default": 0,
+                "description": "Search +/- this many days around returnDate (symmetric). Leave 0 when using returnDateTo",
+                "maximum": 10,
+                "minimum": 0,
+                "title": "Returndateflexdays",
+                "type": "integer"
+              },
+              "returnDateTo": {
+                "anyOf": [
+                  {
+                    "maxLength": 10,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Latest return date in dd/mm/yyyy for an explicit range [returnDate .. returnDateTo]. Requires returnDate; use instead of returnDateFlexDays; must be >= returnDate",
+                "title": "Returndateto"
+              },
+              "adults": {
+                "default": 1,
+                "description": "Number of adults (12+)",
+                "ge": 1,
+                "le": 9,
+                "title": "Adults",
+                "type": "integer"
+              },
+              "children": {
+                "default": 0,
+                "description": "Number of children (2-11)",
+                "maximum": 8,
+                "minimum": 0,
+                "title": "Children",
+                "type": "integer"
+              },
+              "infants": {
+                "default": 0,
+                "description": "Number of infants (<2)",
+                "maximum": 4,
+                "minimum": 0,
+                "title": "Infants",
+                "type": "integer"
+              },
+              "cabinClass": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "M",
+                      "W",
+                      "C",
+                      "F"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "M=economy, W=premium economy, C=business, F=first",
+                "title": "Cabinclass"
+              },
+              "currency": {
+                "default": "EUR",
+                "description": "Currency code (e.g. EUR, USD)",
+                "maxLength": 3,
+                "minLength": 1,
+                "title": "Currency",
+                "type": "string"
+              },
+              "locale": {
+                "default": "en",
+                "description": "Locale (e.g. en, de, fr)",
+                "maxLength": 10,
+                "minLength": 1,
+                "title": "Locale",
+                "type": "string"
+              },
+              "nights_in_dst_from": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Minimum nights at destination before return flight. Turns the search into a return search",
+                "title": "Nights In Dst From"
+              },
+              "nights_in_dst_to": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Maximum nights at destination before return flight",
+                "title": "Nights In Dst To"
+              },
+              "one_for_city": {
+                "default": false,
+                "description": "If true, return only the single best result per destination city \u2014 useful for 'explore' searches with broad destinations",
+                "title": "One For City",
+                "type": "boolean"
+              },
+              "max_sector_stopovers": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Maximum number of stopovers (connections) allowed per flight sector",
+                "title": "Max Sector Stopovers"
+              },
+              "price_from": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Minimum total price filter in the specified currency",
+                "title": "Price From"
+              },
+              "price_to": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Maximum total price filter in the specified currency",
+                "title": "Price To"
+              },
+              "max_fly_duration": {
+                "anyOf": [
+                  {
+                    "ge": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Maximum total flight duration in hours",
+                "title": "Max Fly Duration"
+              },
+              "select_airlines": {
+                "anyOf": [
+                  {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Only include flights operated by these airlines \u2014 comma-separated IATA codes, e.g. 'FR,U2,BA'. Mutually exclusive with exclude_airlines",
+                "title": "Select Airlines"
+              },
+              "exclude_airlines": {
+                "anyOf": [
+                  {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Exclude flights operated by these airlines \u2014 comma-separated IATA codes, e.g. 'FR,W6'. Mutually exclusive with select_airlines",
+                "title": "Exclude Airlines"
+              },
+              "dtime_from": {
+                "anyOf": [
+                  {
+                    "ge": 0,
+                    "le": 23,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Earliest outbound departure hour (0-23, local)",
+                "title": "Dtime From"
+              },
+              "dtime_to": {
+                "anyOf": [
+                  {
+                    "ge": 0,
+                    "le": 23,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Latest outbound departure hour (0-23, local)",
+                "title": "Dtime To"
+              },
+              "atime_from": {
+                "anyOf": [
+                  {
+                    "ge": 0,
+                    "le": 23,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Earliest outbound arrival hour (0-23, local)",
+                "title": "Atime From"
+              },
+              "atime_to": {
+                "anyOf": [
+                  {
+                    "ge": 0,
+                    "le": 23,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Latest outbound arrival hour (0-23, local)",
+                "title": "Atime To"
+              },
+              "ret_dtime_from": {
+                "anyOf": [
+                  {
+                    "ge": 0,
+                    "le": 23,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Earliest return departure hour (0-23, local)",
+                "title": "Ret Dtime From"
+              },
+              "ret_dtime_to": {
+                "anyOf": [
+                  {
+                    "ge": 0,
+                    "le": 23,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Latest return departure hour (0-23, local)",
+                "title": "Ret Dtime To"
+              },
+              "ret_atime_from": {
+                "anyOf": [
+                  {
+                    "ge": 0,
+                    "le": 23,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Earliest return arrival hour (0-23, local)",
+                "title": "Ret Atime From"
+              },
+              "ret_atime_to": {
+                "anyOf": [
+                  {
+                    "ge": 0,
+                    "le": 23,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Latest return arrival hour (0-23, local)",
+                "title": "Ret Atime To"
+              },
+              "stopover_from": {
+                "anyOf": [
+                  {
+                    "ge": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Minimum layover duration in hours",
+                "title": "Stopover From"
+              },
+              "stopover_to": {
+                "anyOf": [
+                  {
+                    "ge": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Maximum layover duration in hours",
+                "title": "Stopover To"
+              },
+              "adults_hold_bags": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "maximum": 2,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "maxItems": 9,
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Checked (hold) bags per adult, one entry per adult (each 0-2), e.g. [1, 0]",
+                "title": "Adults Hold Bags"
+              },
+              "adults_hand_bags": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "maximum": 1,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "maxItems": 9,
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Cabin (hand) bags per adult, one entry per adult (each 0-1), e.g. [1, 1]",
+                "title": "Adults Hand Bags"
+              },
+              "children_hold_bags": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "maximum": 2,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "maxItems": 8,
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Checked (hold) bags per child, one entry per child (each 0-2), e.g. [2]",
+                "title": "Children Hold Bags"
+              },
+              "children_hand_bags": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "maximum": 1,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "maxItems": 8,
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Cabin (hand) bags per child, one entry per child (each 0-1), e.g. [1]",
+                "title": "Children Hand Bags"
+              },
+              "allow_self_transfer": {
+                "default": true,
+                "description": "Allow self-transfer (virtual interlining) connections between separate tickets",
+                "title": "Allow Self Transfer",
+                "type": "boolean"
+              },
+              "allow_overnight_stopovers": {
+                "default": true,
+                "description": "Allow overnight (red-eye) layovers",
+                "title": "Allow Overnight Stopovers",
+                "type": "boolean"
+              },
+              "allow_diff_airport_connection": {
+                "default": true,
+                "description": "Allow connections that change airports within the same city",
+                "title": "Allow Diff Airport Connection",
+                "type": "boolean"
+              },
+              "stopover_airports": {
+                "anyOf": [
+                  {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Only connect via these airports \u2014 comma-separated IATA codes. Constrains connecting flights only; direct (non-stop) flights are still returned.",
+                "title": "Stopover Airports"
+              },
+              "exclude_stopover_airports": {
+                "anyOf": [
+                  {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Never connect via these airports \u2014 comma-separated IATA codes",
+                "title": "Exclude Stopover Airports"
+              },
+              "stopover_countries": {
+                "anyOf": [
+                  {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Only connect via these countries \u2014 comma-separated ISO 3166-1 alpha-2 codes, e.g. 'DE,AT'. Constrains connecting flights only; direct (non-stop) flights are still returned.",
+                "title": "Stopover Countries"
+              },
+              "exclude_stopover_countries": {
+                "anyOf": [
+                  {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Never connect via these countries \u2014 comma-separated ISO 3166-1 alpha-2 codes",
+                "title": "Exclude Stopover Countries"
+              },
+              "fly_days": {
+                "anyOf": [
+                  {
+                    "maxLength": 32,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Allowed outbound departure weekdays \u2014 comma-separated 0=Sun..6=Sat, e.g. '1,2,3,4,5' for weekdays",
+                "title": "Fly Days"
+              },
+              "ret_fly_days": {
+                "anyOf": [
+                  {
+                    "maxLength": 32,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Allowed return departure weekdays \u2014 comma-separated 0=Sun..6=Sat",
+                "title": "Ret Fly Days"
+              },
+              "sort": {
+                "default": "price",
+                "description": "Result ordering",
+                "enum": [
+                  "price",
+                  "duration",
+                  "quality",
+                  "date",
+                  "popularity"
+                ],
+                "title": "Sort",
+                "type": "string"
+              }
+            },
+            "required": [
+              "flyFrom",
+              "flyTo",
+              "departureDate"
+            ],
+            "type": "object",
+            "title": "search_flightsArguments"
+          }
+        },
+        {
+          "name": "feedback-to-devs",
+          "description": "Send feedback, bug reports, or feature requests about the Kiwi.com search-flight MCP tool to its developers. This channel is ONLY for the flight search tool \u2014 search results, pricing, itineraries, filters, or errors in search responses. Do NOT use it for other MCP servers, Claude/app behaviour, account or booking management, voice mode, or unrelated Kiwi.com features; those won't reach the right team. Include error messages, logs, or context that would help the developers reproduce the issue.",
+          "input_schema": {
+            "properties": {
+              "text": {
+                "description": "The content of the feedback. This is ONLY for the Kiwi.com search-flight MCP tool (search results, pricing, itineraries, filters, search errors) \u2014 not other MCP servers, Claude/app behaviour, or general Kiwi.com products. Include error messages, logs, or context that would help the developers reproduce the issue.",
+                "maxLength": 3000,
+                "minLength": 1,
+                "title": "Text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "type": "object",
+            "title": "feedback_to_devsArguments"
+          }
+        }
+      ]
+    }
+  }
+}

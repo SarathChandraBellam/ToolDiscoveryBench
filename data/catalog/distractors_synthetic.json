@@ -1,0 +1,890 @@
+{
+  "synthetic": true,
+  "servers": {
+    "syn-tickets": {
+      "description": "Issue tracker for engineering work",
+      "tools": [
+        {
+          "name": "create_issue",
+          "description": "Create a new issue with title, description, assignee and labels.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "search_issues",
+          "description": "Search issues by JQL-like query, status, assignee or label.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "get_issue",
+          "description": "Get one issue with comments and history by key.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "transition_issue",
+          "description": "Move an issue to another workflow status.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "add_comment",
+          "description": "Add a comment to an issue.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_sprints",
+          "description": "List active and upcoming sprints for a board.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "link_issues",
+          "description": "Link two issues (blocks, relates, duplicates).",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-chat": {
+      "description": "Team chat workspace",
+      "tools": [
+        {
+          "name": "post_message",
+          "description": "Post a message to a channel or thread.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "search_messages",
+          "description": "Full-text search over channel messages.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_channels",
+          "description": "List public and private channels you can see.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "get_thread",
+          "description": "Fetch all replies in a message thread.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "add_reaction",
+          "description": "Add an emoji reaction to a message.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "set_status",
+          "description": "Set the user's chat status and emoji.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-crm": {
+      "description": "Customer relationship management",
+      "tools": [
+        {
+          "name": "search_accounts",
+          "description": "Find customer accounts by name, domain or owner.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "get_opportunity",
+          "description": "Get an opportunity with stage, amount and close date.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "update_opportunity_stage",
+          "description": "Change an opportunity's pipeline stage.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "log_activity",
+          "description": "Log a call, meeting or email against a contact.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_contacts",
+          "description": "List contacts for an account.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "forecast_summary",
+          "description": "Summarize the sales forecast for a quarter.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-warehouse": {
+      "description": "Cloud data warehouse",
+      "tools": [
+        {
+          "name": "run_sql",
+          "description": "Execute a read-only SQL query and return rows.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_tables",
+          "description": "List tables and views in a schema.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "describe_table",
+          "description": "Show columns, types and comments for a table.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "query_history",
+          "description": "List recent queries with runtime and credits used.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "explain_query",
+          "description": "Return the query plan for a SQL statement.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-wiki": {
+      "description": "Internal company wiki and knowledge base",
+      "tools": [
+        {
+          "name": "search_pages",
+          "description": "Search internal wiki pages and runbooks by keyword.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "get_page",
+          "description": "Fetch an internal wiki page as markdown.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "create_page",
+          "description": "Create a new wiki page in a space.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_spaces",
+          "description": "List wiki spaces you have access to.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "page_history",
+          "description": "Show the edit history of a wiki page.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-codehost": {
+      "description": "Internal source code hosting",
+      "tools": [
+        {
+          "name": "search_code",
+          "description": "Search code across internal repositories.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "get_file",
+          "description": "Read a file from a repository at a ref.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_pull_requests",
+          "description": "List open pull requests for a repo.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "create_pull_request",
+          "description": "Open a pull request from a branch.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "get_build_status",
+          "description": "Get CI build status for a commit.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_branches",
+          "description": "List branches in a repository.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-calendar": {
+      "description": "Calendar and scheduling",
+      "tools": [
+        {
+          "name": "list_events",
+          "description": "List calendar events in a time range.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "create_event",
+          "description": "Create a meeting with attendees and a video link.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "find_free_slots",
+          "description": "Find common free time for several people.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "cancel_event",
+          "description": "Cancel an event and notify attendees.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "rsvp",
+          "description": "Accept, decline or tentatively accept an invite.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-mail": {
+      "description": "Email",
+      "tools": [
+        {
+          "name": "search_mail",
+          "description": "Search the mailbox with a query.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "send_mail",
+          "description": "Send an email to recipients.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "draft_mail",
+          "description": "Create an email draft without sending.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "get_message",
+          "description": "Get a full email message with attachments list.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "archive_thread",
+          "description": "Archive an email thread.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-storage": {
+      "description": "Cloud file storage",
+      "tools": [
+        {
+          "name": "search_files",
+          "description": "Search files and folders by name or content.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "read_file",
+          "description": "Read the text content of a stored file.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "upload_file",
+          "description": "Upload a file to a folder.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "share_file",
+          "description": "Share a file with people and set permissions.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_folder",
+          "description": "List items in a folder.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-hr": {
+      "description": "HR and people system",
+      "tools": [
+        {
+          "name": "get_employee",
+          "description": "Look up an employee's profile, manager and team.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "request_leave",
+          "description": "Submit a leave request.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "leave_balance",
+          "description": "Show remaining leave balance.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "org_chart",
+          "description": "Return the reporting chain for a person.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_holidays",
+          "description": "List public holidays for an office location.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-finance": {
+      "description": "Expense and invoice management",
+      "tools": [
+        {
+          "name": "submit_expense",
+          "description": "Submit an expense with receipt and category.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_invoices",
+          "description": "List invoices by vendor, status or date.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "approve_expense",
+          "description": "Approve or reject a pending expense.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "get_budget",
+          "description": "Get budget vs actual for a cost center.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "currency_convert",
+          "description": "Convert an amount between currencies at today's rate.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-monitoring": {
+      "description": "Observability and alerting",
+      "tools": [
+        {
+          "name": "query_metrics",
+          "description": "Query a time series metric with filters.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "search_logs",
+          "description": "Search application logs by service, level and text.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_alerts",
+          "description": "List firing alerts.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "ack_alert",
+          "description": "Acknowledge an alert.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "get_trace",
+          "description": "Fetch a distributed trace by ID.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_dashboards",
+          "description": "List monitoring dashboards.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-incident": {
+      "description": "Incident management",
+      "tools": [
+        {
+          "name": "declare_incident",
+          "description": "Declare an incident with severity and commander.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "update_incident",
+          "description": "Post a status update to an incident.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_incidents",
+          "description": "List open and recent incidents.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "get_oncall",
+          "description": "Who is on call for a service right now.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "write_postmortem",
+          "description": "Create a postmortem document from an incident.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-travel": {
+      "description": "Corporate travel booking",
+      "tools": [
+        {
+          "name": "search_flights",
+          "description": "Search corporate-policy flights between cities on dates.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "book_flight",
+          "description": "Book a selected flight on the corporate card.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "search_hotels",
+          "description": "Search policy-compliant hotels near a location.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "get_itinerary",
+          "description": "Get an employee's upcoming trip itinerary.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "cancel_booking",
+          "description": "Cancel a travel booking.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-kb-search": {
+      "description": "Vector search over uploaded documents",
+      "tools": [
+        {
+          "name": "semantic_search",
+          "description": "Semantic search over your uploaded document corpus.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "ingest_document",
+          "description": "Chunk and embed a document into the index.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_collections",
+          "description": "List vector collections.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "delete_collection",
+          "description": "Delete a vector collection.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-web": {
+      "description": "General web access",
+      "tools": [
+        {
+          "name": "web_search",
+          "description": "Search the public web and return top results with snippets.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "fetch_url",
+          "description": "Fetch a web page and return readable text.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "screenshot_url",
+          "description": "Take a screenshot of a web page.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-design": {
+      "description": "Design files",
+      "tools": [
+        {
+          "name": "get_design_file",
+          "description": "Get frames and components in a design file.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "export_frame",
+          "description": "Export a frame as PNG or SVG.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_comments",
+          "description": "List comments on a design file.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "get_variables",
+          "description": "Get design tokens and variables.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-market": {
+      "description": "Market data",
+      "tools": [
+        {
+          "name": "get_quote",
+          "description": "Latest price quote for a stock ticker.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "get_ohlc",
+          "description": "OHLC candles for a ticker and interval.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "company_filings",
+          "description": "List recent regulatory filings for a company.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "earnings_calendar",
+          "description": "Upcoming earnings dates.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "fx_rate",
+          "description": "Spot FX rate between two currencies.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-cloudops": {
+      "description": "Cloud infrastructure operations",
+      "tools": [
+        {
+          "name": "list_instances",
+          "description": "List compute instances with state and region.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "restart_instance",
+          "description": "Restart a compute instance.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "get_cost_report",
+          "description": "Cloud spend by service for a period.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_buckets",
+          "description": "List object storage buckets.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "describe_iam_role",
+          "description": "Describe an IAM role and its policies.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "deploy_stack",
+          "description": "Deploy an infrastructure-as-code stack.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-notes": {
+      "description": "Personal notes",
+      "tools": [
+        {
+          "name": "create_note",
+          "description": "Create a note.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "search_notes",
+          "description": "Search notes by text.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "append_to_note",
+          "description": "Append text to an existing note.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-weather": {
+      "description": "Weather",
+      "tools": [
+        {
+          "name": "current_weather",
+          "description": "Current weather for a city.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "forecast",
+          "description": "Multi-day forecast for a location.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-maps": {
+      "description": "Maps and places",
+      "tools": [
+        {
+          "name": "search_places",
+          "description": "Find places by query near a location.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "directions",
+          "description": "Driving, walking or transit directions.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "geocode",
+          "description": "Convert an address to coordinates.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    },
+    "syn-ml-registry": {
+      "description": "Internal ML model registry",
+      "tools": [
+        {
+          "name": "search_models",
+          "description": "Search registered models by name, task or owner.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "get_model_version",
+          "description": "Get metrics and artifacts for a model version.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "promote_model",
+          "description": "Promote a model version to staging or production.",
+          "input_schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "list_experiments",
+          "description": "List experiment runs with metrics.",
+          "input_schema": {
+            "type": "object"
+          }
+        }
+      ]
+    }
+  }
+}

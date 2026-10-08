@@ -1,0 +1,134 @@
+"""Jev router tests against a fake HTTP transport (no network, no key)."""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+import httpx
+import pytest
+
+from tooldiscoverybench.core.models import Tool
+from tooldiscoverybench.routers import build_router
+
+
+def fake_jev(captured: list[dict[str, Any]]) -> httpx.MockTransport:
+    """Puts 0.9 on the first option containing 'search' (or the 'aws' server), 0.1 spread."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        captured.append(
+            {"url": str(request.url), "body": body, "auth": request.headers.get("authorization")}
+        )
+        answers = {}
+        for qname, question in body["questions"].items():
+            options = list(question["criteria"])
+            best = next((o for o in options if "search" in o or o == "aws"), options[0])
+            rest = [o for o in options if o != best]
+            probs = {best: 0.9, **{o: 0.1 / len(rest) for o in rest}} if rest else {best: 1.0}
+            answers[qname] = {
+                "type": "choice",
+                "choice": best,
+                "confidence": 0.8,
+                "probabilities": probs,
+            }
+        return httpx.Response(
+            200,
+            json={
+                "model": "jev-1.13.0",
+                "answers": answers,
+                "usage": {"input_tokens": 123, "output_tokens": 0},
+            },
+        )
+
+    return httpx.MockTransport(handler)
+
+
+def jev(captured: list[dict[str, Any]], **cfg: Any) -> Any:
+    return build_router(
+        {"name": "j", "type": "jev", "api_key": "k", "_transport": fake_jev(captured), **cfg}
+    )
+
+
+async def test_flat_payload_and_parse(tools: list[Tool], server_desc: dict[str, str]) -> None:
+    cap: list[dict[str, Any]] = []
+    router = jev(cap, mode="flat")
+    res = await router.route("how do I search aws docs", tools, server_desc)
+    await router.aclose()
+
+    assert res.error is None and res.calibrated
+    assert res.top1 == "aws.search_docs"
+    assert res.ranked[0][1] == pytest.approx(0.9)
+    req = cap[0]
+    assert req["url"] == "https://api.typesafe.ai/v1/systemone"
+    assert req["auth"] == "Bearer k"
+    question = req["body"]["questions"]["tool"]
+    assert req["body"]["model"] == "jev-latest"
+    assert question["type"] == "choice"
+    assert set(question["criteria"]) == {t.id for t in tools}
+    assert res.input_tokens == 123 and res.calls == 1
+
+
+async def test_factored_is_one_request_with_joint_probs(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    cap: list[dict[str, Any]] = []
+    res = await jev(cap, mode="factored").route("aws docs", tools, server_desc)
+
+    assert len(cap) == 1 and res.calls == 1
+    questions = cap[0]["body"]["questions"]
+    assert "server" in questions and len(questions) == 2  # server + the 2-tool aws server
+    probs = dict(res.ranked)
+    assert sum(probs.values()) == pytest.approx(1.0)
+    assert res.top1 == "aws.search_docs"
+    assert probs["aws.search_docs"] == pytest.approx(0.9 * 0.9)
+
+
+async def test_hierarchical_makes_two_calls(tools: list[Tool], server_desc: dict[str, str]) -> None:
+    cap: list[dict[str, Any]] = []
+    res = await jev(cap, mode="hierarchical", top_servers=1).route("aws docs", tools, server_desc)
+
+    assert len(cap) == 2 and res.calls == 2
+    assert set(cap[1]["body"]["questions"]["tool"]["criteria"]) == {
+        "aws.search_docs",
+        "aws.list_regions",
+    }
+    assert {t for t, _ in res.ranked} == {t.id for t in tools}  # pruned tools kept at p=0
+
+
+async def test_flat_tournament_above_255_options() -> None:
+    many = [Tool(f"s{i // 50}", f"t{i}", "x") for i in range(600)] + [Tool("zz", "search_me", "x")]
+    cap: list[dict[str, Any]] = []
+    res = await jev(cap, mode="flat").route("q", many, {})
+
+    assert all(len(c["body"]["questions"]["tool"]["criteria"]) <= 255 for c in cap)
+    assert res.calls == 4  # 3 chunks + final
+    assert res.top1 == "zz.search_me"
+
+
+async def test_gateway_dialect(tools: list[Tool], server_desc: dict[str, str]) -> None:
+    cap: list[dict[str, Any]] = []
+    await jev(cap, dialect="decisions", base_url="https://gw.example").route(
+        "q", tools, server_desc
+    )
+
+    assert cap[0]["url"] == "https://gw.example/v1/decisions"
+    assert cap[0]["body"]["model"] == "typesafe/jev-latest"
+    assert cap[0]["body"]["questions"]["tool"]["kind"] == "choice"
+
+
+async def test_http_error_is_reported_not_raised(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    transport = httpx.MockTransport(lambda _: httpx.Response(401, json={"detail": "bad key"}))
+    router = build_router({"name": "j", "type": "jev", "api_key": "k", "_transport": transport})
+    res = await router.route("q", tools, server_desc)
+
+    assert res.error is not None and "401" in res.error
+    assert res.ranked == []
+
+
+def test_missing_key_marks_router_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    router = build_router({"name": "j", "type": "jev"})
+    assert router.unavailable_reason() == "TYPESAFE_API_KEY not set"

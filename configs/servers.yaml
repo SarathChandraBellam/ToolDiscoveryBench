@@ -1,0 +1,57 @@
+# MCP servers that make up the tool catalog.
+# Values support ${ENV_VAR} and ${ENV_VAR:-default}. A header whose value ends up
+# empty (e.g. "Bearer " with no token set) is dropped, and `auth: true` servers
+# without credentials are skipped instead of failing the pull.
+
+servers:
+  # ---------- no-auth (public) ----------
+  deepwiki:
+    url: https://mcp.deepwiki.com/mcp
+    description: Q&A and generated wiki pages for public GitHub repositories
+  context7:
+    url: https://mcp.context7.com/mcp
+    description: Up-to-date, version-specific library and framework documentation
+    headers:
+      CONTEXT7_API_KEY: ${CONTEXT7_API_KEY:-}   # optional, raises rate limits
+  aws-knowledge:
+    url: https://knowledge-mcp.global.api.aws
+    description: AWS documentation, regional availability and AWS skills
+  microsoft-learn:
+    url: https://learn.microsoft.com/api/mcp
+    description: Microsoft Learn docs (Azure, .NET, M365, Entra) and code samples
+  huggingface:
+    url: https://huggingface.co/mcp
+    description: Search Hugging Face models, datasets, Spaces and papers
+    headers:
+      Authorization: Bearer ${HF_TOKEN:-}       # optional, unlocks more tools
+  cloudflare-docs:
+    url: https://docs.mcp.cloudflare.com/mcp
+    description: Cloudflare developer documentation (Workers, R2, D1, etc.)
+  gitmcp:
+    url: https://gitmcp.io/docs
+    description: Generic docs/code lookup for any GitHub repository
+  astro-docs:
+    url: https://mcp.docs.astro.build/mcp
+    description: Astro web framework documentation
+  svelte:
+    url: https://mcp.svelte.dev/mcp
+    description: Svelte and SvelteKit docs plus a Svelte code autofixer
+  kiwi:
+    url: https://mcp.kiwi.com
+    description: Kiwi.com flight search
+
+  # ---------- auth (enable once you export the token) ----------
+  github:
+    enabled: ${GITHUB_MCP_ENABLED:-false}
+    auth: true
+    url: https://api.githubcopilot.com/mcp/
+    description: GitHub repos, issues, pull requests, actions
+    headers:
+      Authorization: Bearer ${GITHUB_PAT:-}
+  m365:
+    enabled: ${M365_MCP_ENABLED:-false}
+    auth: true
+    url: ${M365_MCP_URL:-http://localhost:8000/mcp}
+    description: Microsoft 365 mail, calendar, files and Teams (your FastMCP server)
+    headers:
+      Authorization: Bearer ${M365_ACCESS_TOKEN:-}

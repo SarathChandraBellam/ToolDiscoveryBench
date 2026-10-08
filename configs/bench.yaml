@@ -1,0 +1,83 @@
+# ToolDiscoveryBench: "can this router name the right tool, and how fast?"
+
+catalog:
+  - data/catalog/public.json                  # real tools, from `tdb pull`
+  - data/catalog/distractors_synthetic.json   # synthetic pad so sizes can go past ~30
+golden: data/golden/public_v1.jsonl
+
+# Each question sees its gold tool(s) + seeded distractors (same-server ones first,
+# i.e. hard negatives). Every router sees the identical catalog for a given size.
+catalog_sizes: [10, 30, 75, 150]
+repeats: 1          # bump to 3+ when you care about latency variance
+concurrency: 4      # default per router; override per router below
+seed: 0
+warmup: true
+
+routers:
+  # ---- free baselines (no keys) ----
+  - name: bm25
+    type: bm25
+
+  - name: embed-bge-small
+    type: embedding
+    enabled: ${TDB_EMBED:-false}        # needs `pip install fastembed`
+    model: BAAI/bge-small-en-v1.5
+
+  # ---- TypeSafe Jev ----
+  - name: jev-flat
+    type: jev
+    dialect: typesafe                   # POST https://api.typesafe.ai/v1/systemone
+    model: jev-latest
+    mode: flat
+    desc_chars: 240
+    concurrency: 4
+    usd_per_m_input: 0.042
+
+  - name: jev-factored                  # P(server) x P(tool|server), ONE request
+    type: jev
+    dialect: typesafe
+    model: jev-latest
+    mode: factored
+    usd_per_m_input: 0.042
+
+  - name: jev-hier                      # server call, then tool call (2 round-trips)
+    type: jev
+    dialect: typesafe
+    model: jev-latest
+    mode: hierarchical
+    top_servers: 2
+    usd_per_m_input: 0.042
+
+  # Same model through a /v1/decisions gateway (Bifrost, NanoGPT, ...):
+  - name: jev-gateway
+    type: jev
+    enabled: ${TDB_JEV_GATEWAY:-false}
+    dialect: decisions
+    base_url: ${JEV_GATEWAY_URL:-http://localhost:8080}
+    path: /v1/decisions                 # NanoGPT: /api/v1/decisions
+    question_type_key: kind             # NanoGPT uses `type`
+    api_key_env: JEV_GATEWAY_KEY
+    model: typesafe/jev-latest
+    mode: flat
+
+  # ---- Strands Agents (LLM picks the tool) ----
+  - name: strands-haiku-native          # real tool-calling: stub tools with real schemas
+    type: strands
+    provider: ${STRANDS_PROVIDER:-bedrock}
+    model_id: ${STRANDS_MODEL_ID:-us.anthropic.claude-haiku-4-5-20251001-v1:0}
+    region: ${AWS_REGION:-us-east-1}
+    mode: native
+    temperature: 0
+    concurrency: 2
+    usd_per_m_input: 1.0                # set to your model's input price
+
+  - name: strands-haiku-structured      # catalog in prompt, pydantic output
+    type: strands
+    provider: ${STRANDS_PROVIDER:-bedrock}
+    model_id: ${STRANDS_MODEL_ID:-us.anthropic.claude-haiku-4-5-20251001-v1:0}
+    region: ${AWS_REGION:-us-east-1}
+    mode: structured
+    desc_chars: 300
+    temperature: 0
+    concurrency: 2
+    usd_per_m_input: 1.0

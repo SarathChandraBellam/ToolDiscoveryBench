@@ -1,0 +1,92 @@
+[project]
+name = "tooldiscoverybench"
+version = "0.1.0"
+description = "Benchmark how accurately and how fast routers (TypeSafe Jev, Strands Agents, BM25, embeddings) pick the right MCP tool."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Sarath Chandra Bellam", email = "sarathbellam95@gmail.com" }]
+keywords = ["mcp", "model-context-protocol", "tool-calling", "tool-retrieval", "benchmark", "agents"]
+dependencies = [
+  "httpx>=0.27",
+  "pydantic>=2.7",
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+strands = ["strands-agents>=1.0", "boto3>=1.34"]
+anthropic = ["strands-agents[anthropic]>=1.0"]
+openai = ["strands-agents[openai]>=1.0"]
+embed = ["fastembed>=0.4", "numpy>=1.26"]
+
+[project.scripts]
+tdb = "tooldiscoverybench.cli:main"
+
+[project.urls]
+Repository = "https://github.com/SarathChandraBellam/ToolDiscoveryBench"
+
+[dependency-groups]
+dev = [
+  "black>=24.8",
+  "mypy>=1.11",
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "ruff>=0.6",
+  "types-pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tooldiscoverybench"]
+
+# ---------------------------------------------------------------- formatting
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+# ---------------------------------------------------------------------- lint
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "N", "C4", "PL", "BLE"]
+ignore = [
+  "E501",     # line length is black's job
+  "PLR0913",  # routers take many config kwargs
+  "PLR2004",  # magic values are fine in a benchmark
+  "PLC0415",  # optional SDKs are imported lazily on purpose
+  "RUF001",   # unicode in user-facing report strings
+  "RUF002",
+  "RUF003",
+  "SIM905",   # str.split() word lists read better than long literals
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR2004", "N802", "BLE001"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["tooldiscoverybench"]
+
+# --------------------------------------------------------------------- types
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+packages = ["tooldiscoverybench"]
+strict = true
+warn_unreachable = true
+pretty = true
+
+[[tool.mypy.overrides]]
+module = ["strands.*", "fastembed.*", "numpy.*", "boto3.*"]
+ignore_missing_imports = true
+
+# --------------------------------------------------------------------- tests
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["network: hits live MCP servers (run with TDB_NETWORK=1)"]
