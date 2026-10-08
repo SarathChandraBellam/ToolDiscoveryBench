@@ -29,15 +29,33 @@ class Tool:
 
 @dataclass
 class GoldenItem:
+    """One benchmark question.
+
+    gold        tool ids that are the right first call. EMPTY means no tool in the
+                catalog fits, and the correct behaviour is to abstain.
+    acceptable  tool ids that are a reasonable but not ideal first call (counted by the
+                lenient metric only).
+    candidates  when set, the exact catalog this question must be shown (e.g. the tools
+                of the servers "connected" in that scenario). When None, the runner
+                samples a catalog of each configured size.
+    """
+
     id: str
     question: str
-    gold: list[str]  # tool ids, any of which counts as correct
+    gold: list[str]
     tags: list[str] = field(default_factory=list)
     notes: str = ""
+    acceptable: list[str] = field(default_factory=list)
+    candidates: list[str] | None = None
+    meta: dict[str, Any] = field(default_factory=dict)
 
     @property
     def gold_servers(self) -> set[str]:
         return {g.split(".", 1)[0] for g in self.gold}
+
+    @property
+    def expects_abstain(self) -> bool:
+        return not self.gold
 
 
 @dataclass
@@ -47,6 +65,7 @@ class RouteResult:
     ranked: best-first list of (tool_id, score). Scores are probabilities when the
     router is calibrated (Jev), otherwise whatever the router produces (BM25 scores,
     cosine sims, self-reported LLM confidence). `calibrated` tells metrics which.
+    abstained: the router decided no tool fits (ranked may still hold its scores).
     """
 
     ranked: list[tuple[str, float]]
@@ -57,7 +76,11 @@ class RouteResult:
     calls: int = 1  # upstream API calls made for this question
     error: str | None = None
     raw: dict[str, Any] | None = None
+    abstained: bool = False
 
     @property
     def top1(self) -> str | None:
+        """The tool the router would call, or None when it abstains."""
+        if self.abstained:
+            return None
         return self.ranked[0][0] if self.ranked else None

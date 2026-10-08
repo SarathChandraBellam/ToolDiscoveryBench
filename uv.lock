@@ -2094,6 +2094,9 @@ embed = [
     { name = "fastembed" },
     { name = "numpy" },
 ]
+huggingface = [
+    { name = "strands-agents", extra = ["openai"] },
+]
 openai = [
     { name = "strands-agents", extra = ["openai"] },
 ]
@@ -2122,9 +2125,10 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "strands-agents", marker = "extra == 'strands'", specifier = ">=1.0" },
     { name = "strands-agents", extras = ["anthropic"], marker = "extra == 'anthropic'", specifier = ">=1.0" },
+    { name = "strands-agents", extras = ["openai"], marker = "extra == 'huggingface'", specifier = ">=1.0" },
     { name = "strands-agents", extras = ["openai"], marker = "extra == 'openai'", specifier = ">=1.0" },
 ]
-provides-extras = ["strands", "anthropic", "openai", "embed"]
+provides-extras = ["strands", "anthropic", "openai", "huggingface", "embed"]
 
 [package.metadata.requires-dev]
 dev = [

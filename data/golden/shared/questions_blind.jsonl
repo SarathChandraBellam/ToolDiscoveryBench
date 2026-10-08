@@ -1,0 +1,162 @@
+{"id": "sv-02", "question": "Check this Svelte component for problems: <script>let count = 0;</script><button on:click={() => count++}>{count}</button>"}
+{"id": "d-sv-doc-01", "question": "How do snippets replace slots in Svelte 5?"}
+{"id": "c7-02", "question": "Get up-to-date docs for /tanstack/query on how to use useInfiniteQuery."}
+{"id": "ms-05", "question": "Show a Python snippet using the azure-identity DefaultAzureCredential with Key Vault secrets."}
+{"id": "x-06", "question": "How is the Svelte compiler organized internally in the sveltejs/svelte repo?"}
+{"id": "d-hf-search-04", "question": "Search the hub for GGUF quantizations of Qwen coder models."}
+{"id": "d-ms-fetch-01", "question": "Read https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/function-calling and pull out the key steps."}
+{"id": "d-dw-ask-02", "question": "In encode/starlette, what happens to a request when a middleware raises before calling the next app?"}
+{"id": "d-x-01", "question": "Is there an official MCP server for Azure, and how do I connect it to VS Code?"}
+{"id": "d-c7-query-01", "question": "Using library /pydantic/pydantic, how do I write a model_validator that runs before field validation?"}
+{"id": "dw-01", "question": "In the langchain-ai/langgraph repo, how does the checkpointer persist graph state between steps?"}
+{"id": "d-aws-regions-03", "question": "List every AWS region name alongside its identifier."}
+{"id": "gm-04", "question": "Semantically search the docs of pydantic/pydantic-ai for how to define a tool with dependencies."}
+{"id": "d-hf-fs-01", "question": "What models are trending on Hugging Face right now?"}
+{"id": "ms-01", "question": "How do I register an app in Microsoft Entra ID and configure the on-behalf-of flow?"}
+{"id": "gm-05", "question": "Get the content of https://raw.githubusercontent.com/astral-sh/ruff/main/CHANGELOG.md"}
+{"id": "dw-03", "question": "Show me the full generated wiki documentation for the vercel/next.js repository."}
+{"id": "cf-02", "question": "I want to move my Cloudflare Pages project over to Workers. What steps do I follow?"}
+{"id": "d-as-03", "question": "Astro middleware: how do I read cookies and redirect unauthenticated users?"}
+{"id": "d-gm-code-03", "question": "grep the psf/requests repo for 'merge_environment_settings'."}
+{"id": "d-c7-query-03", "question": "/websites/react_dev: how does useActionState differ from useFormState?"}
+{"id": "as-02", "question": "Astro: how do I enable server-side rendering with the Node adapter?"}
+{"id": "d-sv-play-01", "question": "Turn this Svelte counter into a playground link I can open: <script>let c = $state(0);</script><button onclick={() => c++}>{c}</button>"}
+{"id": "d-x-10", "question": "How do I write a Svelte 5 component that fetches data on mount?"}
+{"id": "d-gm-map-01", "question": "Which GitHub repo hosts the 'httpx' Python library?"}
+{"id": "d-cf-search-02", "question": "What are the limits on Workers KV value size and writes per second?"}
+{"id": "d-hf-who-01", "question": "Am I authenticated with Hugging Face, and which orgs can I see?"}
+{"id": "dw-05", "question": "What table of contents does the wiki for modelcontextprotocol/python-sdk have?"}
+{"id": "d-cf-search-04", "question": "Can Cloudflare Workers AI run embedding models, and which ones?"}
+{"id": "d-sv-play-02", "question": "Create an online Svelte REPL link for my todo-list component code."}
+{"id": "d-cf-migrate-02", "question": "Guide me through porting a Pages project to Workers static assets."}
+{"id": "d-hf-details-03", "question": "What hardware is the Space black-forest-labs/FLUX.1-dev running on and when was it last updated?"}
+{"id": "d-dw-struct-01", "question": "What sections are in the DeepWiki for pola-rs/polars? Just the outline."}
+{"id": "d-aws-read-01", "question": "Open https://docs.aws.amazon.com/lambda/latest/dg/configuration-memory.html and summarize it."}
+{"id": "d-dw-ask-01", "question": "Why does the openai/openai-agents-python repo run guardrails in parallel with the first model call? Explain from the code."}
+{"id": "d-gm-url-02", "question": "What does https://peps.python.org/pep-0758/ propose?"}
+{"id": "hf-05", "question": "Search for datasets of Indian legal judgments on the Hugging Face Hub."}
+{"id": "d-aws-avail-03", "question": "Is the AWS::SageMaker::Endpoint CloudFormation resource available in me-central-1?"}
+{"id": "d-c7-either-03", "question": "How do I set up a Celery beat schedule in the newest Celery version?"}
+{"id": "d-aws-read-02", "question": "Get me the full text of the AWS docs page at https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html"}
+{"id": "d-gm-fetchdoc-03", "question": "Get the project docs from github.com/BerriAI/litellm."}
+{"id": "d-aws-skill-01", "question": "Is there an AWS skill for building an AgentCore agent? Fetch its SKILL.md."}
+{"id": "d-ms-code-03", "question": "Example Bicep for a storage account with private endpoints, please."}
+{"id": "d-kw-02", "question": "I'm flexible by two days: Mumbai to London around 5 January, back two weeks later."}
+{"id": "sv-04", "question": "What documentation sections are available for SvelteKit?"}
+{"id": "d-x-03", "question": "What's the newest version of the transformers library and what changed?"}
+{"id": "x-07", "question": "Plan a weekend trip: what flights leave Chennai for Colombo on Saturday morning?"}
+{"id": "gm-01", "question": "Search the code of the encode/httpx GitHub repo for where the Transport class is defined."}
+{"id": "dw-02", "question": "List the documentation topics DeepWiki has for facebook/react."}
+{"id": "d-kw-03", "question": "Family trip: 2 adults and a child from Hyderabad to Kuala Lumpur on 22 December."}
+{"id": "kw-03", "question": "Report a bug to the flight search tool's developers: the return date was ignored in my last search."}
+{"id": "d-gm-map-02", "question": "Find the owner/repo for the tailwindcss project."}
+{"id": "x-03", "question": "How do I set up Durable Objects alarms?"}
+{"id": "d-x-06", "question": "Explain OAuth 2.0 token exchange (RFC 8693) as Entra implements it."}
+{"id": "cf-03", "question": "What are the R2 storage pricing tiers and free limits?"}
+{"id": "d-dw-ask-03", "question": "How does the scheduler in apache/airflow decide which task instances to queue first?"}
+{"id": "d-ms-code-01", "question": "Show me TypeScript code that uses MSAL to acquire a token silently in a single-page app."}
+{"id": "d-aws-skill-02", "question": "Get the AWS skill workflow for setting up a static website on S3 with CloudFront."}
+{"id": "kw-02", "question": "Any direct flights from Bengaluru to Singapore next Friday, returning Sunday?"}
+{"id": "d-gm-code-02", "question": "Search modelcontextprotocol/python-sdk code for where the session id header is read."}
+{"id": "d-cf-migrate-01", "question": "We're on Cloudflare Pages with Functions. What do we need to change to run the same site on Workers?"}
+{"id": "d-gm-searchdoc-03", "question": "Look through microsoft/autogen's docs for anything about termination conditions."}
+{"id": "dw-04", "question": "Ask the strands-agents/sdk-python codebase: where are hooks registered before a tool call?"}
+{"id": "d-ms-search-04", "question": "What's the difference between Azure Functions Flex Consumption and Premium plans?"}
+{"id": "d-dw-read-03", "question": "Show me everything DeepWiki has written about the redis/redis codebase."}
+{"id": "d-as-01", "question": "How do I add view transitions between pages in Astro?"}
+{"id": "d-as-02", "question": "What's the syntax for an Astro island that only hydrates when visible?"}
+{"id": "d-cf-search-03", "question": "How do I set up Zero Trust access for a self-hosted internal app with Cloudflare Tunnel?"}
+{"id": "d-hf-search-02", "question": "Which Spaces demo text-to-SQL with small models?"}
+{"id": "d-ms-code-04", "question": "Python sample for sending a message to an Azure Service Bus queue."}
+{"id": "x-02", "question": "Where's the rate limit for Lambda concurrent executions documented?"}
+{"id": "d-hf-who-02", "question": "Check what access my current HF token has."}
+{"id": "d-hf-details-01", "question": "What's the license and parameter count of meta-llama/Llama-3.1-8B-Instruct?"}
+{"id": "d-gm-code-01", "question": "Find the file in fastapi/fastapi where Depends is resolved."}
+{"id": "d-aws-avail-04", "question": "Before I deploy in Jakarta, check whether Amazon Kendra is offered there."}
+{"id": "c7-01", "question": "Find the Context7 library ID for Pydantic so I can pull its docs."}
+{"id": "d-gm-map-03", "question": "I only know the library name 'tRPC'. What's its GitHub location?"}
+{"id": "d-c7-resolve-02", "question": "Which Context7 libraries match 'langgraph'? I need the exact identifier."}
+{"id": "ms-04", "question": "What are the throttling limits for Azure OpenAI Service deployments?"}
+{"id": "d-ms-search-02", "question": "What are the SLA guarantees for Azure Cosmos DB multi-region writes?"}
+{"id": "hf-01", "question": "Find the most downloaded text-embedding models on Hugging Face under 500M parameters."}
+{"id": "d-dw-ask-04", "question": "I'm reading the jlowin/fastmcp source. Where is the auth provider plugged into the HTTP transport?"}
+{"id": "d-c7-query-02", "question": "For /vercel/next.js, show the latest way to define a server action with form data."}
+{"id": "d-x-05", "question": "How do I rate-limit requests at the edge before they reach my origin?"}
+{"id": "d-x-02", "question": "How do I store embeddings in pgvector on Amazon Aurora PostgreSQL?"}
+{"id": "d-aws-read-03", "question": "Read the Bedrock pricing documentation page https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-pricing.html for me."}
+{"id": "d-kw-fb-02", "question": "Send a feature request to the Kiwi MCP team: support multi-city itineraries."}
+{"id": "d-sv-doc-03", "question": "What does the $effect.pre rune do?"}
+{"id": "x-01", "question": "I need docs on how to stream responses in FastAPI."}
+{"id": "d-sv-fix-02", "question": "Review my component and tell me what to modernize for runes: <script>import { onMount } from 'svelte'; let items = []; onMount(async () => { items = await (await fetch('/api')).json(); });</script>{#each items as i}<p>{i}</p>{/each}"}
+{"id": "d-c7-either-01", "question": "What's the current recommended way to configure structured logging in structlog?"}
+{"id": "d-ms-fetch-03", "question": "Summarize this page: https://learn.microsoft.com/en-us/entra/identity/conditional-access/overview"}
+{"id": "d-gm-fetchdoc-01", "question": "Fetch the documentation for the GitHub repo pydantic/logfire."}
+{"id": "aws-02", "question": "Read this page for me: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway.html"}
+{"id": "d-ms-fetch-02", "question": "Grab the full Learn article at https://learn.microsoft.com/en-us/graph/auth-v2-service as markdown."}
+{"id": "d-ms-search-03", "question": "How do I grant an app Mail.Read application permission and get admin consent in Entra?"}
+{"id": "d-gm-searchdoc-01", "question": "Search the docs of strands-agents/sdk-python for how structured output is configured."}
+{"id": "d-sv-list-01", "question": "Which Svelte documentation topics exist about stores and state?"}
+{"id": "d-x-09", "question": "What instance types does SageMaker serverless inference support?"}
+{"id": "x-04", "question": "What's the default token lifetime for access tokens issued by the identity platform used by Microsoft 365?"}
+{"id": "d-dw-read-01", "question": "Dump the whole DeepWiki write-up for tiangolo/fastapi, I want to read it offline."}
+{"id": "d-gm-fetchdoc-02", "question": "Load the README/docs of microsoft/markitdown so I can see how to install it."}
+{"id": "d-dw-read-02", "question": "Pull the complete generated documentation for the langchain-ai/langgraph repository."}
+{"id": "kw-01", "question": "Find me the cheapest flight from Hyderabad to Bangkok on 14 November for two adults."}
+{"id": "d-hf-search-01", "question": "Find open-weight Telugu speech recognition models."}
+{"id": "d-kw-fb-01", "question": "Tell the flight search tool's developers that results ignore my cabin class filter."}
+{"id": "d-c7-either-02", "question": "Show me up-to-date examples of Zod discriminated unions."}
+{"id": "d-gm-searchdoc-02", "question": "In the documentation of run-llama/llama_index, find the section about ingestion pipelines."}
+{"id": "d-c7-resolve-03", "question": "I want current docs for the Polars Python package. Start by finding the right library."}
+{"id": "cf-01", "question": "How do I bind a D1 database to a Cloudflare Worker in wrangler.toml?"}
+{"id": "d-aws-regions-02", "question": "What's the region code for AWS in Hyderabad?"}
+{"id": "c7-03", "question": "How do I configure retries in the latest version of the httpx Python library?"}
+{"id": "d-aws-search-03", "question": "How do Bedrock Guardrails handle PII redaction in model outputs?"}
+{"id": "c7-04", "question": "Show current documentation examples for Prisma's createMany with skipDuplicates."}
+{"id": "d-ms-search-05", "question": "How do I limit who can create Teams in my Microsoft 365 tenant?"}
+{"id": "d-aws-search-01", "question": "How do I give a Lambda function permission to read from a specific DynamoDB table only?"}
+{"id": "d-as-04", "question": "How do I deploy an Astro site to Cloudflare?"}
+{"id": "x-05", "question": "Find a small multilingual reranker I can self-host."}
+{"id": "d-x-04", "question": "Find me a dataset of Hyderabad real estate prices."}
+{"id": "d-aws-avail-01", "question": "Can I use Amazon Bedrock in ap-south-2?"}
+{"id": "d-aws-search-04", "question": "Explain the difference between ECS on Fargate and ECS on EC2 for a batch workload."}
+{"id": "d-gm-url-03", "question": "Download the text at https://raw.githubusercontent.com/pallets/flask/main/README.md."}
+{"id": "aws-05", "question": "Which of these regions support the AWS::Bedrock::Agent CloudFormation resource: us-east-1, eu-west-1, ap-south-1?"}
+{"id": "d-sv-fix-03", "question": "Lint this .svelte file for errors: <script>let { count } = $props(); count++;</script>"}
+{"id": "d-ms-search-01", "question": "How do I configure conditional access to require MFA for guest users?"}
+{"id": "d-hf-details-02", "question": "Show the columns and a few sample rows of the dataset openai/gsm8k."}
+{"id": "d-aws-search-02", "question": "What's the maximum payload size for an Amazon SQS message?"}
+{"id": "d-aws-regions-01", "question": "How many AWS regions are there today, and what are their codes?"}
+{"id": "gm-02", "question": "Which GitHub owner/repo is the 'zod' library?"}
+{"id": "sv-01", "question": "Explain how the $derived rune works in Svelte 5."}
+{"id": "d-kw-01", "question": "Flights from Delhi to Dubai on 20 December, one adult, economy, cheapest first."}
+{"id": "d-aws-search-05", "question": "How do I set up an AgentCore Gateway target that points at an OpenAPI spec?"}
+{"id": "as-01", "question": "How do content collections work in Astro and how do I define a schema for them?"}
+{"id": "aws-03", "question": "Which AWS regions exist right now? Give me the full list with codes."}
+{"id": "d-dw-struct-02", "question": "Give me the topic list for the kubernetes/kubernetes generated wiki so I can pick what to read."}
+{"id": "d-x-07", "question": "Where in the vllm-project/vllm code is the KV cache block manager?"}
+{"id": "d-x-08", "question": "Book me something cheap to Goa from Bengaluru next weekend."}
+{"id": "d-sv-list-02", "question": "Give me an index of the SvelteKit docs sections."}
+{"id": "d-dw-struct-03", "question": "Before I dive in, what areas does the wiki for huggingface/transformers cover?"}
+{"id": "gm-03", "question": "Fetch the README and docs for the github repo astral-sh/uv."}
+{"id": "aws-07", "question": "Load the AWS skill for deploying a serverless API so I can follow its workflow."}
+{"id": "d-hf-fs-03", "question": "Show today's daily papers on Hugging Face."}
+{"id": "d-sv-fix-01", "question": "Is this Svelte 5 code valid? <script>export let name;</script><h1>Hello {name}</h1>"}
+{"id": "hf-03", "question": "Which Hugging Face account and orgs am I logged in as?"}
+{"id": "d-c7-resolve-01", "question": "What's the Context7 id for SQLAlchemy?"}
+{"id": "ms-02", "question": "Give me a C# code sample that calls Microsoft Graph to list a user's calendar events."}
+{"id": "d-hf-fs-02", "question": "Read the config.json file inside the repo Qwen/Qwen2.5-7B-Instruct."}
+{"id": "d-cf-search-01", "question": "How do I add a cron trigger to a Worker?"}
+{"id": "hf-02", "question": "Tell me the license, size and tags of the model BAAI/bge-m3."}
+{"id": "aws-01", "question": "How do I configure inbound OAuth with Microsoft Entra ID for a Bedrock AgentCore Runtime?"}
+{"id": "d-dw-ask-05", "question": "Explain the architecture of the duckdb/duckdb query optimizer at a high level."}
+{"id": "d-gm-url-01", "question": "Fetch https://modelcontextprotocol.io/specification/2025-06-18/basic/transports and tell me what changed for Streamable HTTP."}
+{"id": "aws-06", "question": "What's the recommended way to set up S3 cross-region replication with KMS-encrypted objects?"}
+{"id": "d-kw-04", "question": "What's the shortest flight option from Kochi to Doha this Sunday?"}
+{"id": "d-ms-code-02", "question": "I need a PowerShell snippet to list all Azure resource groups with their tags."}
+{"id": "hf-04", "question": "What are today's trending papers on Hugging Face?"}
+{"id": "d-sv-doc-02", "question": "Show the SvelteKit docs on form actions with progressive enhancement."}
+{"id": "ms-03", "question": "Fetch https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-on-behalf-of-flow as markdown."}
+{"id": "aws-04", "question": "Is Amazon Bedrock AgentCore available in ap-south-1 (Mumbai)?"}
+{"id": "d-hf-search-03", "question": "List the top datasets for financial sentiment classification, sorted by downloads."}
+{"id": "sv-03", "question": "Make me a shareable playground link for this Svelte snippet so I can send it to a colleague."}
+{"id": "d-aws-avail-02", "question": "Which regions support the Lambda CreateFunctionUrlConfig API?"}

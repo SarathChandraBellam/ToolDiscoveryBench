@@ -3,9 +3,22 @@
 catalog:
   - data/catalog/public.json                  # real tools, from `tdb pull`
   - data/catalog/distractors_synthetic.json   # synthetic pad so sizes can go past ~30
-golden: data/golden/public_v1.jsonl
+# Suites = golden files (see data/golden/README.md). Run a subset with `tdb run --suites a,b`.
+suites:
+  # Each question carries its own catalog: the tools of the servers "connected" for it.
+  # Includes no-tool questions where the right answer is to abstain.
+  - name: one_server              # 616 q, 1 server connected (1-5 tools)
+    golden: data/golden/datasets_v1/one_server.jsonl
+  - name: multi_server            # same 616 q, 4 servers connected (7-18 tools)
+    golden: data/golden/datasets_v1/multi_server.jsonl
+  - name: multi_confused          # 325 q from multi_server whose catalogs hold confusable tools
+    golden: data/golden/datasets_v1/multi_server_confused.jsonl
+  # Sampled catalogs: gold + seeded distractors at each size below.
+  - name: claude_v2               # 151 q labelled by Haiku/Sonnet/Opus + Opus judge
+    golden: data/golden/claude/golden_v2.jsonl
+    enabled: ${TDB_CLAUDE_V2:-true}
 
-# Each question sees its gold tool(s) + seeded distractors (same-server ones first,
+# For suites without fixed catalogs: gold tool(s) + seeded distractors (same-server first,
 # i.e. hard negatives). Every router sees the identical catalog for a given size.
 catalog_sizes: [10, 30, 75, 150]
 repeats: 1          # bump to 3+ when you care about latency variance
@@ -17,6 +30,10 @@ routers:
   # ---- free baselines (no keys) ----
   - name: bm25
     type: bm25
+
+  - name: bm25-abstain            # same, but abstains when no tool scores above the threshold
+    type: bm25
+    abstain_threshold: 1.0        # any router can take this (applied by the runner)
 
   - name: embed-bge-small
     type: embedding
@@ -60,6 +77,21 @@ routers:
     model: typesafe/jev-latest
     mode: flat
 
+  # ---- OpenAI Decisions API (public beta, gpt-6-luna) ----
+  - name: openai-decisions-flat
+    type: openai_decisions
+    model: gpt-6-luna
+    mode: flat
+    desc_chars: 240
+    concurrency: 4
+    usd_per_m_input: 0.10
+
+  - name: openai-decisions-factored     # P(server) x P(tool|server), ONE request
+    type: openai_decisions
+    model: gpt-6-luna
+    mode: factored
+    usd_per_m_input: 0.10
+
   # ---- Strands Agents (LLM picks the tool) ----
   - name: strands-haiku-native          # real tool-calling: stub tools with real schemas
     type: strands
@@ -81,3 +113,21 @@ routers:
     temperature: 0
     concurrency: 2
     usd_per_m_input: 1.0
+
+  # Strands driven by an open-weight model on Hugging Face Inference Providers (HF_TOKEN)
+  - name: strands-hf-qwen-native
+    type: strands
+    provider: huggingface
+    model_id: ${HF_STRANDS_MODEL:-Qwen/Qwen3-32B}
+    mode: native
+    temperature: 0
+    concurrency: 2
+
+  - name: strands-hf-qwen-structured
+    type: strands
+    provider: huggingface
+    model_id: ${HF_STRANDS_MODEL:-Qwen/Qwen3-32B}
+    mode: structured
+    desc_chars: 300
+    temperature: 0
+    concurrency: 2

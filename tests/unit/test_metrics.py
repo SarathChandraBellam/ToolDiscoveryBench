@@ -44,3 +44,18 @@ def test_summary_cost_and_calibration() -> None:
     assert summary["top1"] == 1.0
     assert summary["usd_per_1k_q"] == pytest.approx(0.0042)
     assert summary["ece"] == pytest.approx(0.2)
+
+
+def test_no_tool_question_scored_on_abstention() -> None:
+    item = GoldenItem("q", "cancel my booking", [])
+    assert score_row(item, RouteResult([("a.x", 0.9)], 1.0, abstained=True))["correct"]
+    missed = score_row(item, RouteResult([("a.x", 0.9)], 1.0))
+    assert not missed["correct"] and not missed["answerable"]
+
+
+def test_lenient_accepts_acceptable_and_abstain_is_wrong_for_answerable() -> None:
+    item = GoldenItem("q", "?", ["a.read"], acceptable=["a.search"])
+    picked_acceptable = score_row(item, RouteResult([("a.search", 0.6), ("a.read", 0.4)], 1.0))
+    assert not picked_acceptable["correct@1"] and picked_acceptable["lenient@1"]
+    abstained = score_row(item, RouteResult([("a.read", 0.6)], 1.0, abstained=True))
+    assert not abstained["correct"] and abstained["top1"] is None

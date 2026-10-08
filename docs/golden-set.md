@@ -27,7 +27,7 @@ uv run tdb validate
 
 ## Question format
 
-`data/golden/public_v1.jsonl`, one object per line:
+`data/golden/<family>/golden_v2.jsonl` (see `data/golden/README.md`), one object per line:
 
 ```json
 {"id": "aws-04", "question": "Is Amazon Bedrock AgentCore available in ap-south-1 (Mumbai)?",

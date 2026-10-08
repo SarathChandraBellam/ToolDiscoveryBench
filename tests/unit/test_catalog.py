@@ -43,11 +43,23 @@ def test_store_round_trip_merges_and_flags_synthetic(tmp_path: Path) -> None:
 def test_validate_golden_flags_renamed_tools() -> None:
     tools = [Tool("deepwiki", "ask_wiki_question")]
     items = [GoldenItem("q", "?", ["deepwiki.ask_question"])]
-    assert validate_golden(items, tools) == [
-        "q: gold tool(s) not in catalog: ['deepwiki.ask_question']"
-    ]
+    assert validate_golden(items, tools) == ["q: tool(s) not in catalog: ['deepwiki.ask_question']"]
 
 
 def test_env_driven_flags() -> None:
     assert not _truthy("false") and not _truthy("") and _truthy("true")
     assert not _has_value("Bearer ") and _has_value("Bearer abc")
+
+
+def test_fixed_candidates_are_used_exactly() -> None:
+    tools = [Tool(f"s{i % 3}", f"t{i}") for i in range(30)]
+    item = GoldenItem("q", "?", ["s0.t0"], candidates=["s0.t0", "s1.t1", "s2.t2"])
+    got = sample_catalog(tools, item, "fixed")
+    assert sorted(t.id for t in got) == ["s0.t0", "s1.t1", "s2.t2"]
+    assert [t.id for t in got] == [t.id for t in sample_catalog(tools, item, 150)]
+
+
+def test_validate_flags_gold_outside_candidates() -> None:
+    tools = [Tool("a", "x"), Tool("a", "y")]
+    items = [GoldenItem("q", "?", ["a.x"], candidates=["a.y"])]
+    assert validate_golden(items, tools) == ["q: gold not in its candidate catalog: ['a.x']"]

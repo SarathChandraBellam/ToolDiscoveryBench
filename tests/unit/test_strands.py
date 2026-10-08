@@ -97,3 +97,22 @@ async def test_structured_output_drops_unknown_ids(
     assert res.error is None, res.error
     assert [t for t, _ in res.ranked] == ["kiwi.search-flight", "aws.search_docs"]
     assert res.ranked[0][1] == pytest.approx(0.7)
+
+
+def test_huggingface_provider_uses_hf_router(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("openai")
+    from tooldiscoverybench.routers.strands.models import (
+        HF_ROUTER_URL,
+        build_model,
+        provider_unavailable_reason,
+    )
+
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    assert provider_unavailable_reason({"provider": "huggingface"}) == "HF_TOKEN not set"
+    monkeypatch.setenv("HF_TOKEN", "hf_test")
+    assert provider_unavailable_reason({"provider": "huggingface"}) is None
+
+    model = build_model({"provider": "huggingface", "model_id": "Qwen/Qwen3-32B"})
+    assert model.get_config()["model_id"] == "Qwen/Qwen3-32B"
+    assert str(model.client_args["base_url"]) == HF_ROUTER_URL
+    assert model.client_args["api_key"] == "hf_test"

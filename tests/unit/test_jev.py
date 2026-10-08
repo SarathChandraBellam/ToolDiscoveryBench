@@ -65,7 +65,7 @@ async def test_flat_payload_and_parse(tools: list[Tool], server_desc: dict[str, 
     question = req["body"]["questions"]["tool"]
     assert req["body"]["model"] == "jev-latest"
     assert question["type"] == "choice"
-    assert set(question["criteria"]) == {t.id for t in tools}
+    assert set(question["criteria"]) == {t.id for t in tools} | {"__none__"}
     assert res.input_tokens == 123 and res.calls == 1
 
 
@@ -79,7 +79,9 @@ async def test_factored_is_one_request_with_joint_probs(
     questions = cap[0]["body"]["questions"]
     assert "server" in questions and len(questions) == 2  # server + the 2-tool aws server
     probs = dict(res.ranked)
-    assert sum(probs.values()) == pytest.approx(1.0)
+    assert res.raw is not None
+    assert sum(probs.values()) + res.raw["p_none"] == pytest.approx(1.0)
+    assert "__none__" in questions["server"]["criteria"]
     assert res.top1 == "aws.search_docs"
     assert probs["aws.search_docs"] == pytest.approx(0.9 * 0.9)
 
@@ -132,3 +134,31 @@ def test_missing_key_marks_router_unavailable(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
     router = build_router({"name": "j", "type": "jev"})
     assert router.unavailable_reason() == "TYPESAFE_API_KEY not set"
+
+
+async def test_abstains_when_none_option_wins(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        criteria = body["questions"]["tool"]["criteria"]
+        assert "__none__" in criteria
+        probs = {k: (0.7 if k == "__none__" else 0.3 / (len(criteria) - 1)) for k in criteria}
+        return httpx.Response(
+            200, json={"answers": {"tool": {"probabilities": probs}}, "usage": {"input_tokens": 5}}
+        )
+
+    router = build_router(
+        {"name": "j", "type": "jev", "api_key": "k", "_transport": httpx.MockTransport(handler)}
+    )
+    res = await router.route("cancel my hotel booking", tools, server_desc)
+    assert res.abstained and res.top1 is None
+    assert res.raw is not None and res.raw["p_none"] == pytest.approx(0.7)
+    assert "__none__" not in dict(res.ranked)
+
+
+async def test_abstain_can_be_disabled(tools: list[Tool], server_desc: dict[str, str]) -> None:
+    cap: list[dict[str, Any]] = []
+    res = await jev(cap, mode="flat", allow_abstain=False).route("q", tools, server_desc)
+    assert "__none__" not in cap[0]["body"]["questions"]["tool"]["criteria"]
+    assert not res.abstained
