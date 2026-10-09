@@ -298,3 +298,47 @@ async def test_flat_tournament_counts_cost_of_every_round() -> None:
     res = await jev_with(scripted({}), mode="flat").route("q", many, {})
     assert res.calls == 4
     assert res.cost_usd == pytest.approx(0.004)
+
+
+async def test_factored_refused_subquestion_scores_zero_not_error(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    sent: list[set[str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        names = set(body["questions"])
+        sent.append(names)
+        if "tool_0" in names:  # the aws sub-question
+            return httpx.Response(502, text="OpenAI refused to answer question tool_0")
+        answers = {
+            "server": {"probabilities": {"aws": 0.6, "ms": 0.2, "kiwi": 0.1, "__none__": 0.1}}
+        }
+        return httpx.Response(200, json={"answers": answers, "usage": {"input_tokens": 1}})
+
+    router = jev_with(httpx.MockTransport(handler), mode="factored")
+    res = await router.route("q", tools, server_desc)
+    assert res.error is None, res.error
+    assert len(sent) == 2 and "tool_0" not in sent[1]
+    probs = dict(res.ranked)
+    assert probs["aws.search_docs"] == 0.0 and probs["aws.list_regions"] == 0.0
+    assert res.top1 == "ms.docs_search"
+    assert res.raw is not None and res.raw["refused"] == ["tool_0"]
+
+
+async def test_factored_other_errors_still_fail_the_row(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    transport = httpx.MockTransport(lambda _: httpx.Response(500, text="boom on tool_0"))
+    res = await jev_with(transport, mode="factored").route("q", tools, server_desc)
+    assert res.error is not None and "500" in res.error
+
+
+async def test_factored_subquestion_does_not_assume_the_server_fits(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    cap: list[dict[str, Any]] = []
+    await jev(cap, mode="factored").route("q", tools, server_desc)
+    instr = cap[0]["body"]["questions"]["tool_0"]["instructions"]
+    assert "pick the closest one even if none fits well" in instr
+    assert "Assume the agent will use" not in instr

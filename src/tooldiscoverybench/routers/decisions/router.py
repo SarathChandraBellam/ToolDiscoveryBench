@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import re
 import time
 from collections import defaultdict
 from typing import Any
@@ -32,6 +33,7 @@ from tooldiscoverybench.routers.base import Ranked, Router
 from tooldiscoverybench.routers.decisions.types import (
     ChoiceQuestion,
     DecisionClient,
+    DecisionError,
     DecisionResponse,
 )
 
@@ -49,6 +51,14 @@ NONE_TOOL_TEXT = (
     "service that no listed tool provides."
 )
 NONE_SERVER_TEXT = "None of these servers can handle this request."
+
+# Per-server sub-question in factored mode. "Assume the agent will use server S" made some
+# backends (GPT-6 Luna) refuse when nothing on S fits; asking for the closest tool does not.
+FACTORED_TOOL_HINT = (
+    " Suppose the agent is restricted to the '{server}' server's tools; pick the closest one "
+    "even if none fits well."
+)
+_TOOL_Q = re.compile(r"\btool_\d+\b")
 
 SERVER_INSTRUCTIONS = (
     "The state is a user's request to an AI agent. Pick the tool server (integration) the "
@@ -207,10 +217,10 @@ class DecisionRouter(Router):
                 qname_for[server] = f"tool_{i}"
                 questions[f"tool_{i}"] = self._tool_question(
                     server_tools[: self.client.max_options],
-                    f" Assume the agent will use the '{server}' server.",
+                    FACTORED_TOOL_HINT.format(server=server),
                 )
 
-        resp = await self._ask(q, questions)
+        resp, refused = await self._ask_dropping_refusals(q, questions)
         p_server, p_none = (
             _split_none(resp.probabilities("server"))
             if "server" in questions
@@ -220,13 +230,36 @@ class DecisionRouter(Router):
         for server, server_tools in by_server.items():
             ps = p_server.get(server, 0.0)
             if server in qname_for:
-                pt = resp.probabilities(qname_for[server])
+                # a refused sub-question means P(tool | server) = 0 for that server's tools
+                pt = {} if qname_for[server] in refused else resp.probabilities(qname_for[server])
                 for t in server_tools:
                     joint[t.id] = ps * pt.get(t.id, 0.0)
             else:
                 joint[server_tools[0].id] = ps
-        raw = {"server": resp.answers.get("server")}
+        raw: dict[str, Any] = {"server": resp.answers.get("server")}
+        if refused:
+            raw["refused"] = sorted(refused)
         return _sorted(joint), resp.input_tokens, 1, raw, p_none, _best(p_server)
+
+    async def _ask_dropping_refusals(
+        self, q: str, questions: dict[str, ChoiceQuestion]
+    ) -> tuple[DecisionResponse, set[str]]:
+        """Ask; when the backend refuses a per-server ``tool_N`` sub-question (which fails the
+        whole request), drop that sub-question and ask again. Other errors propagate."""
+        pending = dict(questions)
+        refused: set[str] = set()
+        while True:
+            try:
+                return await self._ask(q, pending), refused
+            except DecisionError as exc:
+                names = {n for n in _TOOL_Q.findall(str(exc)) if n in pending}
+                if not names or "refus" not in str(exc).lower():
+                    raise
+                refused |= names
+                for name in names:
+                    pending.pop(name)
+                if not pending:
+                    raise
 
     async def _hierarchical(
         self, q: str, tools: list[Tool], server_desc: dict[str, str]

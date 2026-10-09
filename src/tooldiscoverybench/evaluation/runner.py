@@ -45,14 +45,26 @@ def suite_specs(cfg: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def load_suites(
-    cfg: dict[str, Any], tools: list[Tool], limit: int | None, only: list[str] | None = None
+    cfg: dict[str, Any],
+    tools: list[Tool],
+    limit: int | None,
+    only: list[str] | None = None,
+    split: str | None = None,
 ) -> list[Suite]:
+    """``split`` (or config ``split:``) keeps only questions tagged ``split:<name>``,
+    e.g. ``test`` for the frozen held-out set."""
     default_sizes = list(cfg.get("catalog_sizes", ["all"]))
+    split = split or cfg.get("split") or None
     suites = []
     for spec in suite_specs(cfg):
         if only and spec["name"] not in only:
             continue
-        items = load_golden(spec["golden"])[: limit or None]
+        items = load_golden(spec["golden"])
+        if split:
+            items = [it for it in items if f"split:{split}" in it.tags]
+        items = items[: limit or None]
+        if not items:
+            continue
         problems = validate_golden(items, tools)
         if problems:
             raise SystemExit(
@@ -165,9 +177,14 @@ async def run_bench(
     only_routers: list[str] | None = None,
     limit: int | None = None,
     only_suites: list[str] | None = None,
+    split: str | None = None,
 ) -> Path:
     tools, server_desc = load_catalog(*catalog_paths(cfg))
-    suites = load_suites(cfg, tools, limit, only_suites)
+    suites = load_suites(cfg, tools, limit, only_suites, split)
+    if not suites:
+        raise SystemExit(f"no questions to run (split={split or cfg.get('split')!r})")
+    if split:
+        cfg = {**cfg, "split": split}
     repeats = int(cfg.get("repeats", 1))
     routers = build_routers(cfg, only_routers, log)
     if not routers:

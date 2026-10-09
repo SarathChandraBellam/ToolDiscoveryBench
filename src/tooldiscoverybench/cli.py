@@ -39,6 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--routers", default=None, help="comma-separated router names")
     run.add_argument("--suites", default=None, help="comma-separated suite names")
     run.add_argument("--limit", type=int, default=None, help="first N questions per suite")
+    run.add_argument(
+        "--split",
+        default=None,
+        help="only questions tagged split:<name>, e.g. 'test' for the frozen held-out set",
+    )
     run.add_argument("--out", default=None)
 
     report = sub.add_parser("report", help="re-render report.md for a run directory")
@@ -107,6 +112,7 @@ def cmd_run(args: argparse.Namespace) -> None:
             only_routers=_split(args.routers),
             limit=args.limit,
             only_suites=_split(args.suites),
+            split=args.split,
         )
     )
     print(f"\nreport: {out / 'report.md'}")

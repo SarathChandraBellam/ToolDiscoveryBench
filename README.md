@@ -130,6 +130,7 @@ cp .env.example .env        # OPENROUTER_API_KEY (Jev + Luna), HF_TOKEN, AWS cre
 uv run tdb validate                         # golden labels match live tool names?
 uv run tdb run --limit 20                   # smoke test, every configured router
 uv run tdb run                              # full run -> runs/<timestamp>/report.md
+uv run tdb run --split test                 # only the frozen held-out test split (or `split: test` in the config)
 uv run tdb run --routers or-jev-factored,or-luna-factored,embed-bge-small,bm25   # Jev vs Luna
 uv run tdb ask "Is AgentCore available in Mumbai?" --router jev-factored
 ```
