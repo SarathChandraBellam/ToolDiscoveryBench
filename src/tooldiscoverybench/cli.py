@@ -43,6 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     report = sub.add_parser("report", help="re-render report.md for a run directory")
     report.add_argument("run_dir")
+    report.add_argument(
+        "--exclude-generators",
+        default=None,
+        help="comma-separated question authors to drop in the contamination table "
+        "(default: the judges gpt-5.6-sol, claude-opus-5-5 and gpt-5.6-luna; '' for none)",
+    )
 
     ask = sub.add_parser("ask", help="route one question and print the ranking")
     ask.add_argument("question")
@@ -107,9 +113,14 @@ def cmd_run(args: argparse.Namespace) -> None:
 
 
 def cmd_report(args: argparse.Namespace) -> None:
-    from tooldiscoverybench.evaluation.report import write_report
+    from tooldiscoverybench.evaluation.report import DEFAULT_EXCLUDE_GENERATORS, write_report
 
-    print(write_report(args.run_dir))
+    exclude = (
+        DEFAULT_EXCLUDE_GENERATORS
+        if args.exclude_generators is None
+        else tuple(g.strip() for g in args.exclude_generators.split(",") if g.strip())
+    )
+    print(write_report(args.run_dir, exclude))
 
 
 async def _ask(args: argparse.Namespace) -> None:

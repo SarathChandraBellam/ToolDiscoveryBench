@@ -4,11 +4,21 @@ from __future__ import annotations
 
 import csv
 import json
+import random
+from collections import defaultdict
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
 MAX_MISSES = 200
 MAX_ERRORS = 20
+BOOTSTRAP_RESAMPLES = 1000
+
+#: Question authors that also judged the labels (gpt-5.6-sol, claude-opus-5-5) or that share a
+#: model line with a router under test (gpt-5.6-luna vs openai/gpt-6-luna-decisions). The
+#: report shows accuracy with and without their questions; override with
+#: ``tdb report --exclude-generators``.
+DEFAULT_EXCLUDE_GENERATORS: tuple[str, ...] = ("gpt-5.6-sol", "claude-opus-5-5", "gpt-5.6-luna")
 
 
 def _fmt(value: Any, kind: str = "") -> str:
@@ -133,6 +143,127 @@ def _by_generator(rows: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
+def bootstrap_ci(
+    per_item: Sequence[float], resamples: int = BOOTSTRAP_RESAMPLES, seed: int = 0
+) -> tuple[float, float] | None:
+    """Percentile 95% CI of the mean, resampling questions with replacement (seeded)."""
+    n = len(per_item)
+    if n == 0:
+        return None
+    rng = random.Random(seed)
+    means = sorted(sum(rng.choices(per_item, k=n)) / n for _ in range(resamples))
+    return means[int(0.025 * (resamples - 1))], means[round(0.975 * (resamples - 1))]
+
+
+def _per_item_top1(rows: Iterable[dict[str, Any]]) -> list[float]:
+    """Top-1 per answerable question, averaged over repeats so the question is the unit."""
+    by_item: dict[str, list[bool]] = defaultdict(list)
+    for r in rows:
+        if not r["error"] and r.get("answerable", True):
+            by_item[r["item"]].append(bool(r["correct@1"]))
+    return [sum(v) / len(v) for _, v in sorted(by_item.items())]
+
+
+def _group(rows: list[dict[str, Any]]) -> dict[tuple[str, str, str], list[dict[str, Any]]]:
+    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    for r in rows:
+        groups[(r["router"], r.get("suite", ""), str(r["catalog_size"]))].append(r)
+    return dict(
+        sorted(
+            groups.items(),
+            key=lambda kv: (kv[0][0], kv[0][1], int(kv[0][2]) if kv[0][2].isdigit() else 1 << 30),
+        )
+    )
+
+
+def _ci_cells(per_item: list[float]) -> list[str]:
+    ci = bootstrap_ci(per_item)
+    if ci is None:
+        return ["0", "–", "–"]
+    mean = sum(per_item) / len(per_item)
+    return [str(len(per_item)), _fmt(mean, "pct"), f"{ci[0]:.1%}–{ci[1]:.1%}"]
+
+
+def _top1_ci(rows: list[dict[str, Any]]) -> list[str]:
+    groups = _group(rows)
+    if not groups:
+        return []
+    lines = [
+        "## Top-1 with 95% bootstrap confidence intervals",
+        "",
+        "| router | suite | tools | n | top-1 | 95% CI | test n | test top-1 | test 95% CI |",
+        "|---|---|---:|---:|---:|---|---:|---:|---|",
+    ]
+    for (router, suite, size), rs in groups.items():
+        test = [r for r in rs if "split:test" in r.get("tags", [])]
+        cells = [router, suite, size, *_ci_cells(_per_item_top1(rs))]
+        cells += _ci_cells(_per_item_top1(test))
+        lines.append("| " + " | ".join(cells) + " |")
+    lines += [
+        "",
+        f"*Answerable questions only; {BOOTSTRAP_RESAMPLES} seeded resamples over questions "
+        "(repeats averaged per question). *test* is the frozen held-out split "
+        "(`data/golden/splits/test_qids.txt`); publish numbers from it with repeats ≥ 3.*",
+        "",
+    ]
+    return lines
+
+
+def _by_generator_model(rows: list[dict[str, Any]]) -> list[str]:
+    """Accuracy per router split by the exact model that wrote the question."""
+    cells: dict[tuple[str, str], list[bool]] = defaultdict(list)
+    for r in rows:
+        if not r["error"] and r.get("generator"):
+            cells[(r["router"], str(r["generator"]))].append(bool(r["correct"]))
+    if not cells:
+        return []
+    gens = sorted({g for _, g in cells})
+    lines = [
+        "## Accuracy by question author (exact model)",
+        "",
+        "| router | " + " | ".join(gens) + " |",
+        "|---|" + "---:|" * len(gens),
+    ]
+    for rt in sorted({rt for rt, _ in cells}):
+        vals = [cells.get((rt, g)) for g in gens]
+        lines.append(
+            f"| {rt} | "
+            + " | ".join(_fmt(sum(v) / len(v), "pct") if v else "–" for v in vals)
+            + " |"
+        )
+    lines.append("")
+    return lines
+
+
+def _excluding(rows: list[dict[str, Any]], exclude: Sequence[str]) -> list[str]:
+    if not exclude or not any(r.get("generator") in exclude for r in rows):
+        return []
+    lines = [
+        "## Accuracy without possibly contaminated questions",
+        "",
+        "| router | suite | tools | n | acc | top-1 | n kept | acc kept | top-1 kept |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+
+    def stats(rs: list[dict[str, Any]]) -> list[str]:
+        ok = [r for r in rs if not r["error"]]
+        ans = [r for r in ok if r.get("answerable", True)]
+        acc = sum(bool(r["correct"]) for r in ok) / len(ok) if ok else None
+        top1 = sum(bool(r["correct@1"]) for r in ans) / len(ans) if ans else None
+        return [str(len(rs)), _fmt(acc, "pct"), _fmt(top1, "pct")]
+
+    for (router, suite, size), rs in _group(rows).items():
+        kept = [r for r in rs if r.get("generator") not in exclude]
+        lines.append("| " + " | ".join([router, suite, size, *stats(rs), *stats(kept)]) + " |")
+    lines += [
+        "",
+        "*kept: questions not written by " + ", ".join(f"`{g}`" for g in exclude) + " (judges "
+        "of the labels, or the same model line as a router under test).*",
+        "",
+    ]
+    return lines
+
+
 def _misses(rows: list[dict[str, Any]]) -> list[str]:
     misses = [r for r in rows if not r["error"] and not r["correct"] and r["repeat"] == 0]
     if not misses:
@@ -165,7 +296,9 @@ def _errors(rows: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
-def write_report(run_dir: str | Path) -> Path:
+def write_report(
+    run_dir: str | Path, exclude_generators: Sequence[str] = DEFAULT_EXCLUDE_GENERATORS
+) -> Path:
     run = Path(run_dir)
     data = json.loads((run / "summary.json").read_text())
     rows = [
@@ -183,8 +316,11 @@ def write_report(run_dir: str | Path) -> Path:
 
     lines = [f"# ToolDiscoveryBench — {run.name}", ""]
     lines += _summary_table(summary)
+    lines += _top1_ci(rows)
     lines += _tag_table(data["by_tag"])
     lines += _by_generator(rows)
+    lines += _by_generator_model(rows)
+    lines += _excluding(rows, list(exclude_generators))
     lines += _misses(rows)
     lines += _errors(rows)
 
