@@ -38,8 +38,8 @@ def _summary_table(summary: list[dict[str, Any]]) -> list[str]:
         "## Accuracy",
         "",
         "| router | suite | tools | n | no-tool | err | **acc** | top-1 | lenient | top-3 "
-        "| server@1 | abstain ✓ | false abstain |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| server@1 | abstain ✓ | false abstain | refused |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for s in summary:
         cells = [
@@ -56,6 +56,7 @@ def _summary_table(summary: list[dict[str, Any]]) -> list[str]:
             _fmt(s["server_top1"], "pct"),
             _fmt(s["abstain_recall"], "pct"),
             _fmt(s["false_abstain"], "pct"),
+            _fmt(s.get("refusal_rate"), "pct"),
         ]
         lines.append("| " + " | ".join(str(c) for c in cells) + " |")
     lines += [
@@ -63,7 +64,9 @@ def _summary_table(summary: list[dict[str, Any]]) -> list[str]:
         "*acc: answerable questions need the gold tool first, no-tool questions need an "
         "abstain. top-1 / lenient / top-3 / server@1 are over answerable questions only; "
         "lenient also accepts tools labelled acceptable. abstain ✓: share of no-tool questions "
-        "where the router abstained. false abstain: share of answerable ones where it did.*",
+        "where the router abstained. false abstain: share of answerable ones where it did. "
+        "refused: share of questions where the backend refused a per-server sub-question "
+        "(scored as P = 0 for that server, which can flatter accuracy).*",
         "",
         "## Speed, cost and calibration",
         "",

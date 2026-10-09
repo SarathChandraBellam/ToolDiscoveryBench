@@ -159,6 +159,8 @@ class _Run:
             "output_tokens": res.output_tokens,
             "error": res.error,
             "abstained": res.abstained,
+            # per-server sub-questions the backend refused (scored as P = 0, see decisions)
+            "refused": len((res.raw or {}).get("refused") or []),
             "ranked_top5": res.ranked[:5],
             **score_row(item, res),
         }

@@ -89,3 +89,18 @@ def test_calibration_includes_picks_on_no_tool_questions() -> None:
     summary = summarize(rows)[0]
     assert summary["ece"] == pytest.approx(0.4)  # mean conf 0.9, accuracy 0.5
     assert summary["conf_wrong"] == pytest.approx(0.9)
+
+
+def test_refusal_rate_is_reported() -> None:
+    item = GoldenItem("q", "?", ["a.y"])
+    base = {
+        "router": "r",
+        "catalog_size": 10,
+        "error": None,
+        "latency_ms": 1.0,
+        "calls": 1,
+        "calibrated": True,
+        **score_row(item, RouteResult([("a.y", 0.8)], 1.0, True)),
+    }
+    summary = summarize([{**base, "refused": 1}, {**base, "refused": 0}, base])[0]
+    assert summary["refusal_rate"] == pytest.approx(1 / 3)

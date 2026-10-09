@@ -124,6 +124,8 @@ def summarize(
                 "server_top1": _rate(ans, "server_correct@1"),
                 "abstain_recall": _rate(none, "abstained"),
                 "false_abstain": _rate(ans, "abstained"),
+                # share of questions where the backend refused at least one sub-question
+                "refusal_rate": _rate(ok, "refused"),
                 "lat_p50_ms": pct(lat, 0.5),
                 "lat_p95_ms": pct(lat, 0.95),
                 "lat_mean_ms": _mean(lat),
