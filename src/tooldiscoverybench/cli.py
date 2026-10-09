@@ -10,11 +10,11 @@ tdb ask       "question" [--router NAME] [--size N|all]
 from __future__ import annotations
 
 import argparse
-from typing import Any
 import asyncio
 import json
 import sys
 from collections.abc import Callable, Sequence
+from typing import Any
 
 from tooldiscoverybench.core.config import load_dotenv, load_yaml
 
