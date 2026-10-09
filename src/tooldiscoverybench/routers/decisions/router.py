@@ -14,7 +14,9 @@ Modes
 
 Abstention (``allow_abstain``, default on): a ``NONE`` option ("no listed tool can handle
 this") is added to the top-level question. When it wins, the router abstains. Its
-probability is reported as ``raw["p_none"]``.
+probability is reported as ``raw["p_none"]``. NONE is compared only against options of the
+same question: the best tool in ``flat`` mode, the best server in ``factored`` and
+``hierarchical`` mode (a joint P(server) * P(tool | server) is not on the same scale).
 """
 
 from __future__ import annotations
@@ -53,8 +55,10 @@ SERVER_INSTRUCTIONS = (
     "agent should use first for this request."
 )
 
-# (ranked, input_tokens, upstream_calls, raw, p_none)
-_ModeResult = tuple[Ranked, int, int, dict[str, Any] | None, float]
+# (ranked, input_tokens, upstream_calls, raw, p_none, p_rival)
+# p_rival is the best non-NONE option of the question NONE was asked in, so the abstain
+# decision compares probabilities on the same scale.
+_ModeResult = tuple[Ranked, int, int, dict[str, Any] | None, float, float]
 
 
 def _sorted(probs: dict[str, float]) -> Ranked:
@@ -64,6 +68,10 @@ def _sorted(probs: dict[str, float]) -> Ranked:
 def _split_none(probs: dict[str, float]) -> tuple[dict[str, float], float]:
     rest = dict(probs)
     return rest, rest.pop(NONE, 0.0)
+
+
+def _best(probs: dict[str, float]) -> float:
+    return max(probs.values(), default=0.0)
 
 
 class DecisionRouter(Router):
@@ -130,13 +138,13 @@ class DecisionRouter(Router):
         _COSTS.set(costs)
         try:
             if self.mode == "flat":
-                ranked, tokens, calls, raw, p_none = await self._flat(question, tools)
+                ranked, tokens, calls, raw, p_none, p_rival = await self._flat(question, tools)
             elif self.mode == "factored":
-                ranked, tokens, calls, raw, p_none = await self._factored(
+                ranked, tokens, calls, raw, p_none, p_rival = await self._factored(
                     question, tools, server_desc
                 )
             elif self.mode == "hierarchical":
-                ranked, tokens, calls, raw, p_none = await self._hierarchical(
+                ranked, tokens, calls, raw, p_none, p_rival = await self._hierarchical(
                     question, tools, server_desc
                 )
             else:
@@ -145,7 +153,6 @@ class DecisionRouter(Router):
             elapsed = (time.perf_counter() - started) * 1000
             return RouteResult([], elapsed, True, error=f"{type(exc).__name__}: {exc}")
         elapsed = (time.perf_counter() - started) * 1000
-        best_tool = ranked[0][1] if ranked else 0.0
         return RouteResult(
             ranked,
             elapsed,
@@ -155,7 +162,7 @@ class DecisionRouter(Router):
             calls=calls,
             raw={**(raw or {}), "p_none": p_none},
             cost_usd=sum(costs) if costs else None,
-            abstained=self.allow_abstain and p_none > best_tool,
+            abstained=self.allow_abstain and p_none > p_rival,
         )
 
     async def _flat(self, q: str, tools: list[Tool]) -> _ModeResult:
@@ -163,14 +170,14 @@ class DecisionRouter(Router):
         if len(tools) + abstain <= self.client.max_options:
             resp = await self._ask(q, {"tool": self._tool_question(tools, with_none=abstain)})
             probs, p_none = _split_none(resp.probabilities("tool"))
-            return _sorted(probs), resp.input_tokens, 1, None, p_none
+            return _sorted(probs), resp.input_tokens, 1, None, p_none, _best(probs)
 
         chunks = [
             tools[i : i + self.client.max_options]
             for i in range(0, len(tools), self.client.max_options)
         ]
         rounds = await asyncio.gather(
-            *[self.client.ask(q, {"tool": self._tool_question(c)}) for c in chunks]
+            *[self._ask(q, {"tool": self._tool_question(c)}) for c in chunks]
         )
         survivors: set[str] = set()
         for resp in rounds:
@@ -181,7 +188,7 @@ class DecisionRouter(Router):
         final = await self._ask(q, {"tool": self._tool_question(finalists, with_none=abstain)})
         tokens = sum(r.input_tokens for r in rounds) + final.input_tokens
         probs, p_none = _split_none(final.probabilities("tool"))
-        return _sorted(probs), tokens, len(chunks) + 1, None, p_none
+        return _sorted(probs), tokens, len(chunks) + 1, None, p_none, _best(probs)
 
     async def _factored(
         self, q: str, tools: list[Tool], server_desc: dict[str, str]
@@ -218,7 +225,8 @@ class DecisionRouter(Router):
                     joint[t.id] = ps * pt.get(t.id, 0.0)
             else:
                 joint[server_tools[0].id] = ps
-        return _sorted(joint), resp.input_tokens, 1, {"server": resp.answers.get("server")}, p_none
+        raw = {"server": resp.answers.get("server")}
+        return _sorted(joint), resp.input_tokens, 1, raw, p_none, _best(p_server)
 
     async def _hierarchical(
         self, q: str, tools: list[Tool], server_desc: dict[str, str]
@@ -234,14 +242,15 @@ class DecisionRouter(Router):
 
         top = {s for s, _ in _sorted(p_server)[: self.top_servers]}
         candidates = [t for t in tools if t.server in top]
+        p_rival = _best(p_server)
         if len(candidates) == 1:
             only = candidates[0]
-            ranked_one = [(only.id, p_server.get(only.server, 1.0))]
-            return ranked_one, tokens, calls, {"server": p_server}, p_none
-
-        resp = await self._ask(q, {"tool": self._tool_question(candidates)})
-        ranked = _sorted(resp.probabilities("tool"))
+            ranked = [(only.id, p_server.get(only.server, 1.0))]
+        else:
+            resp = await self._ask(q, {"tool": self._tool_question(candidates)})
+            ranked = _sorted(resp.probabilities("tool"))
+            tokens, calls = tokens + resp.input_tokens, calls + 1
         seen = {tid for tid, _ in ranked}
         # tools on pruned servers stay listed at p=0 so recall@k is defined
         ranked += [(t.id, 0.0) for t in tools if t.id not in seen]
-        return ranked, tokens + resp.input_tokens, calls + 1, {"server": p_server}, p_none
+        return ranked, tokens, calls, {"server": p_server}, p_none, p_rival

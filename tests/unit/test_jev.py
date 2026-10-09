@@ -233,3 +233,68 @@ def test_list_shaped_answers_are_normalised() -> None:
         ]
     )
     assert out["tool"]["probabilities"] == {"a": 0.7, "b": 0.3}
+
+
+def scripted(server: dict[str, float], tool: dict[str, float] | None = None) -> httpx.MockTransport:
+    """Fixed server-question probabilities; tool questions get ``tool`` or a uniform spread."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        answers = {}
+        for qname, question in body["questions"].items():
+            opts = list(question["criteria"])
+            if qname == "server":
+                probs = {o: server.get(o, 0.0) for o in opts}
+            elif tool:
+                probs = {o: tool.get(o, 0.0) for o in opts}
+            else:
+                probs = {o: 1 / len(opts) for o in opts}
+            answers[qname] = {"probabilities": probs}
+        usage = {"input_tokens": 1, "cost": 0.001}
+        return httpx.Response(200, json={"answers": answers, "usage": usage})
+
+    return httpx.MockTransport(handler)
+
+
+def jev_with(transport: httpx.MockTransport, **cfg: Any) -> Any:
+    return build_router(
+        {"name": "j", "type": "jev", "api_key": "k", "_transport": transport, **cfg}
+    )
+
+
+async def test_factored_abstain_compares_none_with_best_server(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    # aws 0.5 beats NONE 0.3, but the joint P(aws) * P(tool | aws) = 0.25 is below 0.3
+    t = scripted({"aws": 0.5, "ms": 0.1, "kiwi": 0.1, "__none__": 0.3})
+    res = await jev_with(t, mode="factored").route("aws docs", tools, server_desc)
+    assert not res.abstained
+    assert res.top1 in {"aws.search_docs", "aws.list_regions"}
+
+
+async def test_hierarchical_abstain_compares_none_with_best_server(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    # NONE wins the server question; a confident second-stage tool pick must not override it
+    t = scripted(
+        {"aws": 0.3, "ms": 0.1, "kiwi": 0.1, "__none__": 0.5},
+        {"aws.search_docs": 0.9, "aws.list_regions": 0.1},
+    )
+    res = await jev_with(t, mode="hierarchical", top_servers=1).route("q", tools, server_desc)
+    assert res.abstained and res.top1 is None
+
+
+async def test_hierarchical_single_candidate_keeps_pruned_tools(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    t = scripted({"kiwi": 0.8, "aws": 0.1, "ms": 0.05, "__none__": 0.05})
+    res = await jev_with(t, mode="hierarchical", top_servers=1).route("flights", tools, server_desc)
+    assert res.top1 == "kiwi.search-flight" and res.calls == 1
+    assert {tid for tid, _ in res.ranked} == {tool.id for tool in tools}
+
+
+async def test_flat_tournament_counts_cost_of_every_round() -> None:
+    many = [Tool(f"s{i // 50}", f"t{i}", "x") for i in range(600)]
+    res = await jev_with(scripted({}), mode="flat").route("q", many, {})
+    assert res.calls == 4
+    assert res.cost_usd == pytest.approx(0.004)

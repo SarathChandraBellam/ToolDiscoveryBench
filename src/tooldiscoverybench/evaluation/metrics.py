@@ -4,6 +4,12 @@ Two kinds of question:
   answerable  gold is non-empty. Correct (strict) = the router did not abstain and its top
               pick is a gold tool. Lenient also accepts tools labelled ``acceptable``.
   no-tool     gold is empty (nothing in the catalog fits). Correct = the router abstained.
+
+An abstention on an answerable question is a miss at every cutoff: rank, @3, @5 and MRR
+ignore the ranking a router may still report after abstaining, so they agree with @1.
+
+Calibration (ECE, Brier) covers every question where the router made a pick, including
+no-tool questions, where any pick is wrong.
 """
 
 from __future__ import annotations
@@ -22,7 +28,9 @@ def score_row(item: GoldenItem, res: RouteResult) -> dict[str, Any]:
     ok_lenient = gold | set(item.acceptable)
     pick = res.top1  # None when abstained
     answerable = not item.expects_abstain
-    rank = next((i + 1 for i, tid in enumerate(ids) if tid in gold), None)
+    rank = (
+        None if res.abstained else next((i + 1 for i, tid in enumerate(ids) if tid in gold), None)
+    )
 
     strict = answerable and pick is not None and pick in gold
     lenient = answerable and pick is not None and pick in ok_lenient
@@ -93,7 +101,8 @@ def summarize(
         none = [r for r in ok if not r.get("answerable", True)]
         lat = [r["latency_ms"] for r in ok]
         calibrated = any(r["calibrated"] for r in ok)
-        scored = [r for r in ans if r["p_top1"] is not None and not r.get("abstained")]
+        # every pick the router actually made; a pick on a no-tool question is wrong
+        scored = [r for r in ok if r["p_top1"] is not None and not r.get("abstained")]
         conf = [r["p_top1"] for r in scored]
         corr = [r["correct@1"] for r in scored]
         tok = [r["input_tokens"] for r in ok if r.get("input_tokens")]
