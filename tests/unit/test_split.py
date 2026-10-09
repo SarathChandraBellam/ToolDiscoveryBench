@@ -23,3 +23,14 @@ def test_split_keeps_only_tagged_questions(tmp_path: Path, tools: list[Tool]) ->
     assert [it.id for it in load_suites(cfg, tools, None, split="test")[0].items] == ["a"]
     assert [it.id for it in load_suites({**cfg, "split": "test"}, tools, None)[0].items] == ["a"]
     assert load_suites(cfg, tools, None, split="nope") == []
+
+
+def test_repeats_flag_overrides_config() -> None:
+    import pytest
+
+    from tooldiscoverybench.cli import _with_repeats
+
+    assert _with_repeats({"repeats": 1}, None) == {"repeats": 1}
+    assert _with_repeats({"repeats": 1}, 3) == {"repeats": 3}
+    with pytest.raises(SystemExit):
+        _with_repeats({}, 0)

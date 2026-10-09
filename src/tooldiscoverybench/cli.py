@@ -10,6 +10,7 @@ tdb ask       "question" [--router NAME] [--size N|all]
 from __future__ import annotations
 
 import argparse
+from typing import Any
 import asyncio
 import json
 import sys
@@ -39,6 +40,12 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--routers", default=None, help="comma-separated router names")
     run.add_argument("--suites", default=None, help="comma-separated suite names")
     run.add_argument("--limit", type=int, default=None, help="first N questions per suite")
+    run.add_argument(
+        "--repeats",
+        type=int,
+        default=None,
+        help="repeats per question (overrides the config; publish with >= 3)",
+    )
     run.add_argument(
         "--split",
         default=None,
@@ -102,12 +109,20 @@ def cmd_validate(args: argparse.Namespace) -> None:
     print("OK")
 
 
+def _with_repeats(cfg: dict[str, Any], repeats: int | None) -> dict[str, Any]:
+    if repeats is None:
+        return cfg
+    if repeats < 1:
+        raise SystemExit("--repeats must be >= 1")
+    return {**cfg, "repeats": repeats}
+
+
 def cmd_run(args: argparse.Namespace) -> None:
     from tooldiscoverybench.evaluation.runner import run_bench
 
     out = asyncio.run(
         run_bench(
-            load_yaml(args.config),
+            _with_repeats(load_yaml(args.config), args.repeats),
             args.out,
             only_routers=_split(args.routers),
             limit=args.limit,
