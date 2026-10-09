@@ -2,8 +2,12 @@
   "one_server": {
     "questions": 616,
     "no_tool": 67,
+    "no_tool_pct": 10.9,
     "with_acceptable": 273,
     "judges_split": 31,
+    "rewritten": 13,
+    "needs_human_review": 0,
+    "test_split": 182,
     "catalog_size": {
       "1": 18,
       "2": 149,
@@ -27,8 +31,12 @@
   "multi_server": {
     "questions": 616,
     "no_tool": 67,
+    "no_tool_pct": 10.9,
     "with_acceptable": 287,
     "judges_split": 31,
+    "rewritten": 13,
+    "needs_human_review": 0,
+    "test_split": 182,
     "catalog_size": {
       "7": 2,
       "8": 12,
@@ -59,8 +67,12 @@
   "multi_server_confused": {
     "questions": 325,
     "no_tool": 1,
+    "no_tool_pct": 0.3,
     "with_acceptable": 315,
     "judges_split": 31,
+    "rewritten": 10,
+    "needs_human_review": 0,
+    "test_split": 103,
     "catalog_size": {
       "9": 3,
       "10": 3,
@@ -85,5 +97,13 @@
       "gpt-6-astra": 31
     },
     "gold_tools_covered": 28
+  },
+  "canonical_datasets_v1": {
+    "unique_questions": 616,
+    "no_tool": 67,
+    "gold_tools": 31,
+    "servers": 10,
+    "test_split": 182,
+    "added_by_cursor_bot": 0
   }
 }
