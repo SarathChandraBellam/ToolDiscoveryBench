@@ -48,8 +48,8 @@ measured`). Answers in either map or list shape are normalised. Optional headers
 
 Dialects:
 
-- `typesafe` (default): `POST https://api.typesafe.ai/v1/systemone`. The model id is bare (`jev-latest`) and questions use `type`.
-- `decisions`: any `/v1/decisions` gateway such as Bifrost or NanoGPT. Set `base_url`, `path` and `question_type_key`; the model id becomes `typesafe/jev-latest`.
+- `typesafe` (default): `POST https://api.typesafe.ai/v1/systemone`. The model id is bare (`jev-1.13`, pinned in `configs/bench.yaml`; `jev-latest` follows the alias) and questions use `type`.
+- `decisions`: any `/v1/decisions` gateway such as Bifrost or NanoGPT. Set `base_url`, `path` and `question_type_key`; the model id becomes `typesafe/jev-1.13` (pinned).
 
 ### OpenAI Decisions API (`type: openai_decisions`)
 

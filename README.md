@@ -41,9 +41,10 @@ flowchart LR
   **BM25** and **embeddings** set the free floor.
 - **Real catalogs.** 31 tools pulled live from 10 public, no-auth MCP servers, with
   authenticated servers (GitHub, Microsoft 365) ready to switch on.
-- **Judged golden sets.** 1,557 question-catalog pairs written by 9 models from two vendors
-  and judged by two cross-vendor judges, including **no-tool** questions where the right
-  move is to call nothing.
+- **Judged golden sets.** 696 unique questions over 31 tools from 10 servers (616 written by
+  9 models from two vendors and judged by two cross-vendor judges, plus 80 unreviewed no-tool
+  questions), run as three suites with different catalogs. About 20% are **no-tool**
+  questions where the right move is to call nothing, and a frozen 30% test split is held out.
 - **More than accuracy.** Strict and lenient top-1, top-3, right-server rate, abstention,
   p50/p95 latency, tokens, $/1k questions, ECE and Brier calibration.
 - **Fair by construction.** Every router sees the identical, seeded catalog for each
@@ -86,27 +87,35 @@ APIs (`jev`, `openai_decisions`) stay available.
 
 | Suite | Questions | No-tool | Catalog per question | Purpose |
 |---|---:|---:|---|---|
-| `one_server` | 616 | 67 | tools of 1 connected server (1–5) | choosing within one server |
-| `multi_server` | 616 | 67 | tools of 4 connected servers (7–18) | same questions, cross-server confusion |
-| `multi_confused` | 325 | 1 | 9–18 tools, confusable by design | the hard subset |
-| `claude_v2` | 151 | 0 | sampled at 10 / 30 / 75 / 150 with synthetic distractors | scaling with catalog size |
+| `one_server` | 696 | 147 (21%) | tools of 1 connected server (1–5) | choosing within one server |
+| `multi_server` | 696 | 147 (21%) | tools of 4 connected servers (7–18) | same questions, cross-server confusion |
+| `multi_confused` | 405 | 81 (20%) | 9–18 tools, confusable by design | the hard subset |
+| `claude_v2` | 190 | 39 (21%) | sampled at 10 / 30 / 75 / 150 with synthetic distractors | scaling with catalog size |
 
-`datasets_v1` questions were written by Claude Fable, Opus, Sonnet and Haiku plus GPT-5.5,
-GPT-5.6 (Sol, Luna, Terra) and GPT-6 Astra, about 70 each. Every label was checked by a GPT
-judge and a Claude judge, who agree on 585 of 616 questions. Each record keeps its full
-provenance. See [data/golden/README.md](data/golden/README.md).
+The three `datasets_v1` suites are **one set of 696 unique questions** shown with different
+catalogs (`multi_confused` is a subset), not 1,797 independent items; every row carries a
+shared `qid` and `data/golden/questions.jsonl` lists each question once. 616 were written by
+Claude Fable, Opus, Sonnet and Haiku plus GPT-5.5, GPT-5.6 (Sol, Luna, Terra) and GPT-6 Astra,
+about 70 each, and checked by a GPT judge and a Claude judge, who agree on 585 of 616. The
+other 80 are near-miss no-tool questions added to reach ~20% abstention; they are tagged
+`needs_human_review`. Two of the judges also wrote questions, and GPT-5.6 Luna shares a
+model line with a router under test, so the report shows accuracy with and without their
+questions. See [data/golden/README.md](data/golden/README.md) for the split, the curation
+steps and what is still open.
 
 ## 📊 Baseline results
 
-Strict top-1 accuracy on questions that have a right tool:
+Strict top-1 accuracy on questions that have a right tool, with 95% bootstrap intervals:
 
 | Router | one_server | multi_server | multi_confused |
 |---|---:|---:|---:|
-| BM25 | 71.4% | 61.4% | 54.0% |
-| Embeddings (bge-small) | **74.3%** | **65.4%** | **63.0%** |
+| BM25 | 71.4% (67.2–75.2) | 61.4% (57.2–65.6) | 53.7% (48.1–59.3) |
+| Embeddings (bge-small) | **74.0%** (70.1–77.4) | **65.0%** (61.0–69.0) | **62.7%** (57.4–67.9) |
 
 Neither baseline recognizes no-tool questions: both abstain on 0% of them. A score threshold
-on BM25 catches 60% in `one_server` but also wrongly abstains on 18% of answerable questions.
+on BM25 catches 56% in `one_server` but also wrongly abstains on 18% of answerable questions.
+These are single runs over all questions; publish numbers on the frozen test split with
+`repeats: 3` or more.
 That gap is what calibrated decision models and LLM agents are measured on. Jev, OpenAI
 Decisions and Strands results land in the same table as soon as keys are configured.
 

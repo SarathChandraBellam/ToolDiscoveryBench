@@ -27,7 +27,14 @@ Questions are either **answerable** (`gold` lists the right first tool) or **no-
 
 The report also breaks accuracy down by question tag (`confusable`, `judges_split`,
 `no_tool`, `generator:<family>`, ...; `hard_negative:<x>` pools as `hard_negative`) and by
-the model family that wrote the question.
+the model family and exact model that wrote the question. It also has:
+
+- **Top-1 with 95% bootstrap confidence intervals** (1,000 seeded resamples over questions,
+  repeats averaged per question), for all answerable questions and for the frozen `test`
+  split (`data/golden/splits/test_qids.txt`).
+- **Accuracy without possibly contaminated questions**: the same groups with questions by the
+  label judges (gpt-5.6-sol, claude-opus-5-5) and gpt-5.6-luna removed. Change the list with
+  `tdb report <run_dir> --exclude-generators a,b` (`''` for none).
 
 ## Reading the results
 
@@ -35,4 +42,7 @@ the model family that wrote the question.
 - Use `top3` when the router feeds an agent a shortlist, and `top1` when it picks one tool.
 - For decision models, look at `conf_wrong` and `abstain_recall`. If wrong answers come with low probability, a threshold can
   route only uncertain questions to a slower model.
-- Small golden sets are noisy. With 50 questions, one question is 2 points of accuracy.
+- Small golden sets are noisy. With 50 questions, one question is 2 points of accuracy. Read
+  the bootstrap intervals before calling a difference real.
+- Published numbers should come from the `test` split with `repeats: 3` or more, and with
+  pinned model versions (`jev-1.13`, not `jev-latest`).

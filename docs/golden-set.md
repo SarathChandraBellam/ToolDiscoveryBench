@@ -39,6 +39,10 @@ uv run tdb validate
   `resolve-library-id` and `query-docs` when a library id may already be known.
 - Lines starting with `//` are comments.
 
+For `datasets_v1`, the benchmark-ready files (shared `qid`, frozen `test` split, leak
+rewrites, no-tool additions) come from `scripts/build_benchmark.py`; see
+`data/golden/README.md`.
+
 ## Tags
 
 | Tag | Meaning |
@@ -53,7 +57,8 @@ uv run tdb validate
 
 ## Writing good questions
 
-- Phrase them the way a user would, not by echoing tool descriptions.
+- Phrase them the way a user would, not by echoing tool descriptions. Never include the gold
+  tool's name; `tests/unit/test_dataset_integrity.py` fails if a question does.
 - Add at least one question per real tool. `tdb validate` lists uncovered tools.
 - Prefer questions with a clear first call. When two are genuinely fine, list both in `gold`
   and tag `multi_valid`.

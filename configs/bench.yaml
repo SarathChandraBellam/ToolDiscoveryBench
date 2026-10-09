@@ -6,22 +6,23 @@ catalog:
 # Suites = golden files (see data/golden/README.md). Run a subset with `tdb run --suites a,b`.
 suites:
   # Each question carries its own catalog: the tools of the servers "connected" for it.
-  # Includes no-tool questions where the right answer is to abstain.
-  - name: one_server              # 616 q, 1 server connected (1-5 tools)
+  # Includes no-tool questions (~20%) where the right answer is to abstain. The same question
+  # shares one `qid` across suites; `split` / tag split:test marks the frozen held-out set.
+  - name: one_server              # 696 q (147 no-tool), 1 server connected (1-5 tools)
     golden: data/golden/datasets_v1/one_server.jsonl
-  - name: multi_server            # same 616 q, 4 servers connected (7-18 tools)
+  - name: multi_server            # same 696 q, 4 servers connected (7-18 tools)
     golden: data/golden/datasets_v1/multi_server.jsonl
-  - name: multi_confused          # 325 q from multi_server whose catalogs hold confusable tools
+  - name: multi_confused          # 405 q (81 no-tool) from multi_server, confusable catalogs
     golden: data/golden/datasets_v1/multi_server_confused.jsonl
   # Sampled catalogs: gold + seeded distractors at each size below.
-  - name: claude_v2               # 151 q labelled by Haiku/Sonnet/Opus + Opus judge
+  - name: claude_v2               # 190 q (39 no-tool) labelled by Haiku/Sonnet/Opus + Opus judge
     golden: data/golden/claude/golden_v2.jsonl
     enabled: ${TDB_CLAUDE_V2:-true}
 
 # For suites without fixed catalogs: gold tool(s) + seeded distractors (same-server first,
 # i.e. hard negatives). Every router sees the identical catalog for a given size.
 catalog_sizes: [10, 30, 75, 150]
-repeats: 1          # bump to 3+ when you care about latency variance
+repeats: 1          # quick runs; published numbers must use repeats >= 3 (variance + CIs)
 concurrency: 4      # default per router; override per router below
 seed: 0
 warmup: true
@@ -74,7 +75,7 @@ routers:
   - name: jev-flat
     type: jev
     dialect: typesafe                   # POST https://api.typesafe.ai/v1/systemone
-    model: jev-latest
+    model: jev-1.13                     # pinned, same version as the OpenRouter routers
     mode: flat
     desc_chars: 240
     concurrency: 4
@@ -83,14 +84,14 @@ routers:
   - name: jev-factored                  # P(server) x P(tool|server), ONE request
     type: jev
     dialect: typesafe
-    model: jev-latest
+    model: jev-1.13
     mode: factored
     usd_per_m_input: 0.042
 
   - name: jev-hier                      # server call, then tool call (2 round-trips)
     type: jev
     dialect: typesafe
-    model: jev-latest
+    model: jev-1.13
     mode: hierarchical
     top_servers: 2
     usd_per_m_input: 0.042
@@ -104,7 +105,7 @@ routers:
     path: /v1/decisions                 # NanoGPT: /api/v1/decisions
     question_type_key: kind             # NanoGPT uses `type`
     api_key_env: JEV_GATEWAY_KEY
-    model: typesafe/jev-latest
+    model: typesafe/jev-1.13
     mode: flat
 
   # ---- OpenAI Decisions API (public beta, gpt-6-luna) ----
