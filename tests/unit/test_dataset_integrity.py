@@ -42,6 +42,22 @@ def test_no_gold_tool_name_in_question(suite: str) -> None:
     assert not leaks, f"gold tool name appears verbatim in the question: {leaks}"
 
 
+@pytest.mark.parametrize("suite", sorted(SUITES))
+def test_no_tool_share_is_about_20_percent(suite: str) -> None:
+    rs = rows(suite)
+    share = sum(not r["gold"] for r in rs) / len(rs)
+    assert 0.18 <= share <= 0.25, f"{suite}: {share:.1%} no-tool"
+
+
+def test_added_no_tool_rows_are_flagged_for_review() -> None:
+    for suite in SUITES:
+        for r in rows(suite):
+            if "generator:cursor-bot" in r["tags"]:
+                assert r["gold"] == [] and "no_tool" in r["tags"]
+                assert "needs_human_review" in r["tags"]
+                assert r["meta"]["generator"] == "cursor-bot"
+
+
 def test_qid_is_shared_and_consistent_across_suites() -> None:
     seen: dict[str, tuple[str, list[str], str]] = {}
     per_suite: dict[str, set[str]] = defaultdict(set)
