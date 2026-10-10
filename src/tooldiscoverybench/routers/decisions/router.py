@@ -28,6 +28,13 @@ import time
 from collections import defaultdict
 from typing import Any
 
+from tooldiscoverybench.catalog.auto_hints import (
+    DEFAULT_CACHE_DIR,
+    DEFAULT_MODEL,
+    AutoHint,
+    auto_option_text,
+    load_or_generate,
+)
 from tooldiscoverybench.core.models import RouteResult, Tool
 from tooldiscoverybench.routers.base import Ranked, Router
 from tooldiscoverybench.routers.decisions.types import (
@@ -97,6 +104,13 @@ class DecisionRouter(Router):
         self.top_servers = int(cfg.get("top_servers", 2))
         self.chunk_keep = int(cfg.get("chunk_keep", 5))
         self.allow_abstain = bool(cfg.get("allow_abstain", True))
+        # option text: plain = MCP description only (default); auto = description + LLM
+        # use_when/not_when lines + schema key args, generated once per catalog in setup()
+        self.option_text: str = cfg.get("option_text", "plain")
+        if self.option_text not in ("plain", "auto"):
+            raise ValueError(f"option_text must be plain or auto, got {self.option_text!r}")
+        self.auto_hints: dict[str, AutoHint] = {}
+        self.auto_hints_meta: dict[str, Any] = {}
         self.client: DecisionClient = self.build_client(cfg)
 
     def build_client(self, cfg: dict[str, Any]) -> DecisionClient:
@@ -109,6 +123,22 @@ class DecisionRouter(Router):
             costs.append(resp.cost_usd)
         return resp
 
+    async def setup(self, all_tools: list[Tool], server_desc: dict[str, str]) -> None:
+        if self.option_text == "auto" and not self.auto_hints:
+            self.auto_hints, self.auto_hints_meta = await load_or_generate(
+                all_tools,
+                server_desc,
+                model=self.cfg.get("auto_hints_model", DEFAULT_MODEL),
+                cache_dir=self.cfg.get("auto_hints_cache", DEFAULT_CACHE_DIR),
+                max_usd=float(self.cfg.get("auto_hints_max_usd", 0.25)),
+                transport=self.cfg.get("_auto_hints_transport"),
+            )
+
+    def _option_text(self, tool: Tool) -> str:
+        if self.option_text == "auto":
+            return auto_option_text(tool, self.auto_hints.get(tool.id), self.desc_chars)
+        return f"[{tool.server}] {tool.name}: {tool.short_desc(self.desc_chars)}"
+
     def unavailable_reason(self) -> str | None:
         return None if self.client.configured else f"{self.client.api_key_env} not set"
 
@@ -119,7 +149,7 @@ class DecisionRouter(Router):
     def _tool_question(
         self, tools: list[Tool], extra: str = "", with_none: bool = False
     ) -> ChoiceQuestion:
-        criteria = {t.id: f"[{t.server}] {t.name}: {t.short_desc(self.desc_chars)}" for t in tools}
+        criteria = {t.id: self._option_text(t) for t in tools}
         if with_none:
             criteria[NONE] = NONE_TOOL_TEXT
         return ChoiceQuestion(f"{self.instructions}{extra}", criteria)

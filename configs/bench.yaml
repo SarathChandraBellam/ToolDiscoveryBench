@@ -50,6 +50,16 @@ routers:
     concurrency: 4
     usd_per_m_input: 0.042               # fallback if usage.cost is missing; ctx 32K
 
+  - name: or-jev-flat-autohint          # same, plus auto use_when/not_when lines per tool
+    type: openrouter
+    model: typesafe/jev-1.13
+    mode: flat
+    option_text: auto                    # plain (default) | auto: see catalog/auto_hints.py
+    auto_hints_model: anthropic/claude-haiku-5.5   # one-off preprocessing per catalog, cached
+    auto_hints_max_usd: 0.25
+    concurrency: 4
+    usd_per_m_input: 0.042
+
   - name: or-jev-factored
     type: openrouter
     model: typesafe/jev-1.13
