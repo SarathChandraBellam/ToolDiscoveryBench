@@ -6,6 +6,7 @@ import math
 import re
 import time
 from collections import Counter
+from collections.abc import Callable
 
 from tooldiscoverybench.core.models import RouteResult, Tool
 from tooldiscoverybench.routers.base import Router
@@ -31,6 +32,40 @@ def tool_text(tool: Tool, server_desc: dict[str, str]) -> str:
     return f"{tool.server} {tool.name} {tool.name} {tool.description} {server_desc.get(tool.server, '')}"
 
 
+def bm25_rank(
+    question: str,
+    tools: list[Tool],
+    server_desc: dict[str, str],
+    k1: float = 1.5,
+    b: float = 0.75,
+    text_fn: Callable[[Tool, dict[str, str]], str] = tool_text,
+) -> list[tuple[str, float]]:
+    """Best-first ``(tool_id, score)`` for ``question`` over ``tools`` (Okapi BM25).
+
+    ``text_fn`` builds each tool's document (default: server, name, description, server
+    description).
+    """
+    docs = [tokenize(text_fn(t, server_desc)) for t in tools]
+    avgdl = sum(map(len, docs)) / max(1, len(docs))
+    doc_freq = Counter(term for doc in docs for term in set(doc))
+    n_docs = len(docs)
+    query = tokenize(question)
+
+    scores: list[tuple[str, float]] = []
+    for tool, doc in zip(tools, docs, strict=True):
+        tf = Counter(doc)
+        score = 0.0
+        for term in query:
+            if term not in tf:
+                continue
+            idf = math.log(1 + (n_docs - doc_freq[term] + 0.5) / (doc_freq[term] + 0.5))
+            norm = tf[term] + k1 * (1 - b + b * len(doc) / avgdl)
+            score += idf * tf[term] * (k1 + 1) / norm
+        scores.append((tool.id, score))
+    scores.sort(key=lambda kv: -kv[1])
+    return scores
+
+
 class BM25Router(Router):
     calibrated = False
 
@@ -40,23 +75,5 @@ class BM25Router(Router):
         started = time.perf_counter()
         k1 = float(self.cfg.get("k1", 1.5))
         b = float(self.cfg.get("b", 0.75))
-
-        docs = [tokenize(tool_text(t, server_desc)) for t in tools]
-        avgdl = sum(map(len, docs)) / max(1, len(docs))
-        doc_freq = Counter(term for doc in docs for term in set(doc))
-        n_docs = len(docs)
-        query = tokenize(question)
-
-        scores: list[tuple[str, float]] = []
-        for tool, doc in zip(tools, docs, strict=True):
-            tf = Counter(doc)
-            score = 0.0
-            for term in query:
-                if term not in tf:
-                    continue
-                idf = math.log(1 + (n_docs - doc_freq[term] + 0.5) / (doc_freq[term] + 0.5))
-                norm = tf[term] + k1 * (1 - b + b * len(doc) / avgdl)
-                score += idf * tf[term] * (k1 + 1) / norm
-            scores.append((tool.id, score))
-        scores.sort(key=lambda kv: -kv[1])
+        scores = bm25_rank(question, tools, server_desc, k1, b)
         return RouteResult(scores, (time.perf_counter() - started) * 1000, False, calls=0)

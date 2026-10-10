@@ -386,6 +386,78 @@ latency). To rebuild the combined tables above from several runs, use
 | `TDB_ESCALATE_BELOW`, `TDB_SHORTLIST_K`, `FRONTIER_MODEL_ID` | tuning the preliminary routers |
 | `TYPESAFE_API_KEY`, `OPENAI_API_KEY`, `HF_TOKEN`, AWS credentials / `ANTHROPIC_API_KEY` | routers that are supported but not yet benchmarked (`jev`, `openai_decisions`, `strands`) |
 
+## 🧪 Agent harness simulation (deepagents)
+
+The router tables above score one routing decision. `src/tooldiscoverybench/harness/` asks
+the end-to-end question instead: inside a real agent loop, what does tool discovery cost and
+does the agent still reach the gold tool? It is built on LangChain
+[`deepagents`](https://github.com/langchain-ai/deepagents) and runs on **free** OpenRouter
+models only.
+
+**Setups** (same questions, same catalog of the 31 real tools, every tool executed by a stub
+that logs the call and returns a short canned result):
+
+| setup | what the model sees |
+|---|---|
+| `all_tools` | all 31 tools loaded (no discovery; how the gold labels were made) |
+| `bm25_search` | tools deferred; `tool_search(query, limit=5)` mirrors Anthropic's BM25 Tool Search Tool |
+| `regex_search` | tools deferred; `tool_search(pattern, limit=5)` mirrors Anthropic's regex Tool Search Tool |
+| `router_first` | `ToolRouterMiddleware`: ONE upfront router pick loads 3 tools; BM25 `tool_search` is the fallback |
+| `langchain_selector` | optional, not in the default run: LangChain's `LLMToolSelectorMiddleware` (re-selects 3 tools before every model call) |
+
+Tool search follows Anthropic's
+[Tool Search Tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool):
+both variants match tool names, descriptions, argument names and argument descriptions;
+regex is Python `re.search`, case-insensitive, max 200 chars; BM25 takes a natural-language
+query (max 500 chars, scored with the repo's BM25); each returns up to 5 tool references
+(the model may pass `limit`). Referenced tools are then *loaded*: `DeferredToolsMiddleware`
+adds their full definitions to the next model call, like the API expanding `tool_reference`
+blocks, and refuses calls to tools that were never loaded. All catalog tools are deferred
+(Anthropic suggests keeping the 3-5 most used tools loaded; we don't, so the cost of search
+is visible).
+
+The router middleware uses the same LangChain v1 hook as `LLMToolSelectorMiddleware`
+(`wrap_model_call` + `request.override(tools=...)`) but picks once per run. Routers plug in
+behind one `pick(question, tools)` interface: `free_llm` (one chat call to a free model,
+labelled **free-model router**, not Jev), `bm25` (BM25 shortlist, no LLM call) and `jev`
+(the real Jev through the repo's decision-router path; paid, refused unless
+`--allow-paid-router`). The repo's `/api/alpha/decisions` path only serves decision models,
+so it cannot run a free model; the free router is a plain chat completion.
+
+**Skills**: four small `SKILL.md` skills (`repo-research`, `library-docs`, `cloud-docs`,
+`web-and-travel-lookup`) in `harness/workspace/skills/`, loaded through deepagents'
+`SkillsMiddleware` in **every** setup. deepagents' write/exec built-ins, `ls`/`glob`/`grep`
+and the general-purpose subagent are hidden; `read_file` (needed to open a skill) and
+`write_todos` stay.
+
+**Sample**: dev split of `datasets_v1` only (never `splits/test_qids.txt`), 4 questions per
+gold server x 10 servers + 8 no-tool questions = 48, fixed seed. Agent step cap: 8 model
+calls.
+
+**Metrics** per (setup, model, question), in `results.jsonl`: first real tool call = gold
+(top-1), gold reached, ended with gold, tool calls split into discovery (`tool_search`) and
+real calls, wrong real calls before gold (wasted), calls-to-gold, LLM calls, input/output
+tokens (usage metadata), latency, router calls/tokens/latency on their own and inside the
+totals, router fallback, errors. `summary.md` has an accuracy table, an efficiency table and
+a no-tool (abstention) table, over complete (setup, model) cells only.
+
+```bash
+uv sync --extra deepagents
+export OPENROUTER_API_KEY=...          # free models only; the harness refuses other ids
+uv run --extra deepagents python -m tooldiscoverybench.harness --config configs/harness.yaml
+# one model, two questions, as a smoke run:
+uv run --extra deepagents python -m tooldiscoverybench.harness --config configs/harness.yaml \
+  --models nvidia/nemotron-3-super-120b-a12b:free --limit 2 --out /tmp/harness-smoke
+# re-render tables only:
+uv run --extra deepagents python -m tooldiscoverybench.harness --config configs/harness.yaml --summary-only
+```
+
+Free models are rate limited (OpenRouter: 20 requests/min; 50/day, or 1,000/day after buying
+credits). The run paces requests (15/min by default), retries 429s with backoff, runs one
+model through every setup before the next, checks `/api/v1/key` before each cell and stops
+cleanly when the day's free quota is nearly used. Rerun the same command to resume;
+`--retry-errors` reruns error rows.
+
 ## 🚀 Quick start
 
 ```bash
