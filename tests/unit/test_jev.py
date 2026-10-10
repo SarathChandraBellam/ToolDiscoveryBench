@@ -342,3 +342,51 @@ async def test_factored_subquestion_does_not_assume_the_server_fits(
     instr = cap[0]["body"]["questions"]["tool_0"]["instructions"]
     assert "pick the closest one even if none fits well" in instr
     assert "Assume the agent will use" not in instr
+
+
+async def test_factored_separate_fit_question_drives_abstention(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    sent: list[dict[str, Any]] = []
+
+    def handler(p_no: float) -> httpx.MockTransport:
+        def h(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content)
+            sent.append(body["questions"])
+            answers: dict[str, Any] = {}
+            for name, q in body["questions"].items():
+                opts = list(q["criteria"])
+                if name == "fit":
+                    probs = {"yes": 1 - p_no, "no": p_no}
+                elif name == "server":
+                    probs = {o: (0.7 if o == "aws" else 0.3 / (len(opts) - 1)) for o in opts}
+                else:
+                    probs = {o: 1 / len(opts) for o in opts}
+                answers[name] = {"probabilities": probs}
+            return httpx.Response(200, json={"answers": answers, "usage": {"input_tokens": 1}})
+
+        return httpx.MockTransport(h)
+
+    fits = await jev_with(handler(0.2), mode="factored", abstain_question=True).route(
+        "aws docs", tools, server_desc
+    )
+    questions = sent[0]
+    assert "fit" in questions and "__none__" not in questions["server"]["criteria"]
+    assert "search_docs" in questions["fit"]["instructions"]
+    assert set(questions["fit"]["criteria"]) == {"yes", "no"}
+    assert not fits.abstained and fits.top1 in {"aws.search_docs", "aws.list_regions"}
+    assert fits.raw is not None and fits.raw["p_none"] == pytest.approx(0.2)
+
+    no_fit = await jev_with(handler(0.6), mode="factored", abstain_question=True).route(
+        "cancel my hotel", tools, server_desc
+    )
+    assert no_fit.abstained and no_fit.top1 is None
+
+
+async def test_factored_default_keeps_inline_none(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    cap: list[dict[str, Any]] = []
+    await jev(cap, mode="factored").route("q", tools, server_desc)
+    questions = cap[0]["body"]["questions"]
+    assert "fit" not in questions and "__none__" in questions["server"]["criteria"]
