@@ -1,0 +1,579 @@
+{
+  "generator": {
+    "model": "anthropic/claude-haiku-5.5",
+    "temperature": 0,
+    "reasoning": "disabled",
+    "prompt_sha256": "db4afdba55b4c9fc145414ea60a8671638094e6cad97ef29cdddd81b404936be",
+    "catalog_fingerprint": "14a61e89bf1a3716a2cb440b9bf5484190c0431cdc0265166f3c7832ef557fbc",
+    "n_tools": 141,
+    "n_servers": 33,
+    "cost_usd": 0.04918,
+    "seconds": 32.9
+  },
+  "tools": {
+    "deepwiki.ask_wiki_question": {
+      "use_when": "The user asks a natural-language question about how a public GitHub repository's code works (architecture, behavior, where something is implemented, how a feature works) and gives an owner/repo name or a list of up to 10 repos. Use it as the first call for such questions.",
+      "not_when": "Do not use for browsing the wiki outline or topics (deepwiki.read_wiki_structure), for reading full wiki pages (deepwiki.read_wiki_contents), for library/API docs lookups where only a package name is known (context7.query-docs or gitmcp tools), for searching code by text (gitmcp.search_generic_code), or for private repositories or non-GitHub hosts (syn-codehost.search_code)."
+    },
+    "deepwiki.read_wiki_contents": {
+      "use_when": "The user wants to browse or read the generated wiki documentation of a public GitHub repository and already gives its owner/repo name (e.g. facebook/react). Use it for requests to view the docs or overview of a known repo.",
+      "not_when": "Do not use for a specific question about the code (use deepwiki.ask_wiki_question). Do not use just to list topics (use deepwiki.read_wiki_structure). Do not use for repos without an owner/repo name or for non-GitHub documentation (use context7.resolve-library-id or gitmcp.fetch_generic_documentation)."
+    },
+    "deepwiki.read_wiki_structure": {
+      "use_when": "The user wants an overview or table of contents of a GitHub repository's documentation topics, or wants to explore what a repo's DeepWiki covers before reading a specific section. Requires the repo as owner/repo.",
+      "not_when": "Questions about specific code behavior (use deepwiki.ask_wiki_question); reading the text of a documentation page (use deepwiki.read_wiki_contents); non-GitHub documentation such as libraries (use context7.query-docs or gitmcp.fetch_generic_documentation); internal company wikis (use syn-wiki.search_pages).; Requests without a GitHub repo identifier cannot be served by this tool."
+    },
+    "context7.resolve-library-id": {
+      "use_when": "The user names a library, package, or framework (e.g. 'React hooks', 'Next.js middleware') and no Context7 library ID is given, so an ID must be resolved before documentation can be queried. Also use when the user gives an ID in '/org/project' form, which bypasses this step.",
+      "not_when": "Requests for the actual documentation or code examples once the ID is known (use context7.query-docs). Questions about GitHub repos not known as libraries, which may suit gitmcp or deepwiki. Requests for AWS, Azure, or Cloudflare product docs, which have dedicated search tools. Requests that already include a '/org/project' ID."
+    },
+    "context7.query-docs": {
+      "use_when": "The user asks how to use a specific programming library or framework feature and the request already includes an exact library ID in '/org/project' or '/org/project/version' form, or after context7.resolve-library-id has returned one. Provide a single-concept query.",
+      "not_when": "The library ID is unknown and the user only gives a package or product name; call context7.resolve-library-id first (this tool would be wrong without a valid ID). Do not use for AWS, Microsoft, Cloudflare or Astro docs covered by other servers, nor for general web search or questions about a GitHub repo's own code (use deepwiki or gitmcp tools). Do not call more than 3 times per question."
+    },
+    "aws-knowledge.aws___read_documentation": {
+      "use_when": "The chunks from aws-knowledge.aws___search_documentation lack the needed detail, or the user asks for a complete enumeration or count (\"list all X\", \"how many X\") that the chunks only partly show. Requires exact doc URLs from search results, or a known allow-listed AWS doc URL.",
+      "not_when": "Questions the search chunks already answer, since those chunks are authoritative; re-reading a URL to confirm them is unnecessary. Use aws-knowledge.aws___search_documentation to find pages first. Region availability goes to aws-knowledge.aws___get_regional_availability, and skills go to aws-knowledge.aws___retrieve_skill. Non-AWS or non-allow-listed URLs cannot be fetched here."
+    },
+    "aws-knowledge.aws___search_documentation": {
+      "use_when": "A user asks an AWS question that needs documentation: architecture, best practices, tutorials, feature behavior, or any AWS topic not covered by a more specific topic. Use it as the first call for AWS docs lookups; pick one topic, or add a second only if the query spans domains.",
+      "not_when": "Requests for AWS region availability or region lists (use aws___get_regional_availability or aws___list_regions); fetching a known AWS doc URL in full (use aws___read_documentation); API/CLI parameter specs go best with the reference_documentation topic here; requests for a guided workflow or skill (use aws___retrieve_skill); non-AWS libraries or cloud providers (use context7, microsoft-learn, or cloudflare-docs)."
+    },
+    "aws-knowledge.aws___list_regions": {
+      "use_when": "The user asks for the list of all AWS regions, region codes or names, or how many regions AWS has. No region or service needs to be named; this is a plain enumeration of AWS regions.",
+      "not_when": "Questions about which services or APIs are available in a specific region (use aws-knowledge.aws___get_regional_availability), questions about AWS documentation or concepts (use aws-knowledge.aws___search_documentation), or regions of a non-AWS cloud such as Azure or Cloudflare regions (use microsoft-learn or cloudflare-docs tools)."
+    },
+    "aws-knowledge.aws___get_regional_availability": {
+      "use_when": "The user asks whether a specific AWS product, service API, or CloudFormation resource is available in one or more named regions, or in which regions it is available or planned. Use filters with exact AWS catalog names; if the exact name is unknown, first call once with a single region and no filters to list valid names.",
+      "not_when": "Requests for the number or list of AWS regions (use list_regions), general AWS documentation or how-to questions (use search_documentation), or vague availability questions with no named resource. Guessed or pluralized filter names will be rejected, so do not call without verifying names first."
+    },
+    "aws-knowledge.aws___retrieve_skill": {
+      "use_when": "The user wants an AWS skill, workflow or reference guide and already has a skill_name copied verbatim from a prior search_documentation result. Use `file` only for a file path cited in that skill. Call search_documentation first to obtain skill_name.",
+      "not_when": "Requests for AWS documentation pages or explanations (use search_documentation, or read_documentation for a known URL), regional availability (get_regional_availability), or the list of regions (list_regions). Do not call with a guessed or invented skill_name or file path."
+    },
+    "microsoft-learn.microsoft_docs_search": {
+      "use_when": "The user asks a question about Microsoft or Azure products, services, developer tools, frameworks, or APIs (Azure, .NET, Microsoft 365, Entra) and needs official documentation to ground the answer. Use it first when no specific page URL or path is already known.",
+      "not_when": "The user already supplies a Microsoft Learn page URL or path to read in full (use microsoft-learn.microsoft_docs_fetch). The user wants code snippets or samples (use microsoft-learn.microsoft_code_sample_search). Topics about AWS, Cloudflare, Astro, Svelte, or libraries outside Microsoft (use their respective documentation tools)."
+    },
+    "microsoft-learn.microsoft_code_sample_search": {
+      "use_when": "The user wants code snippets, examples, or sample usage for a Microsoft/Azure/.NET/M365 SDK, class, method, or API, especially when writing or generating code. Use a language filter (e.g. csharp, python) when the language is known.",
+      "not_when": "Conceptual or reference explanations, article reading, or troubleshooting prose (use microsoft_docs_search instead). Full page content by URL (use microsoft_docs_fetch). Non-Microsoft libraries (use context7 or other doc tools). Requests for an exact page's complete content are not covered here."
+    },
+    "microsoft-learn.microsoft_docs_fetch": {
+      "use_when": "The user gives or clearly references a specific Microsoft Learn documentation page URL and wants its full content, such as complete steps, prerequisites or troubleshooting. Use it after microsoft_docs_search has surfaced a promising page whose snippet was truncated. Requires an HTML page URL on microsoft.com.",
+      "not_when": "The user has no specific URL and wants to find docs by topic; call microsoft_docs_search first (microsoft-learn.microsoft_docs_search). Do not use for code snippet lookup (microsoft-learn.microsoft_code_sample_search), for PDF, DOCX or image URLs, or for non-Microsoft documentation sites (aws-knowledge.aws___read_documentation, cloudflare-docs, astro-docs, svelte)."
+    },
+    "huggingface.hf_whoami": {
+      "use_when": "The user asks who they are logged in as on Hugging Face, which account or organizations their token belongs to, or whether Hugging Face credentials are configured and accessible. Call first when account or auth context is needed before other Hub actions.",
+      "not_when": "Searching or browsing models, datasets, Spaces or papers (huggingface.hub_repo_search or huggingface.hf_fs). Inspecting a specific repo's contents or schema (huggingface.hub_repo_details). Requests to reveal, copy or print the actual token value; this tool never returns credential values. Generic GitHub or cloud account identity questions (other servers)."
+    },
+    "huggingface.hub_repo_search": {
+      "use_when": "The user wants to find or browse Hugging Face models, datasets, or Spaces by keyword, author, filter tag, or trending/downloads/likes/recent order, and wants a list of repo links. Use it to discover repos rather than to inspect one known repo.",
+      "not_when": "The user already names a specific repo and wants its details or dataset contents (use huggingface.hub_repo_details). Browsing files or paths in a repo or listing hf:// collections and papers (use huggingface.hf_fs). Questions about Hugging Face account or login (use huggingface.hf_whoami). Library API docs (use context7 or deepwiki tools)."
+    },
+    "huggingface.hub_repo_details": {
+      "use_when": "The user wants details, metadata, file info, or dataset structure/preview for specific Hugging Face repos whose IDs (author/name) are already known or given, e.g. openai/gpt-oss-120b. Use dataset_structure before dataset_preview for datasets.",
+      "not_when": "Use huggingface.hub_repo_search when the user only has a topic or keyword and needs to find repos. Use huggingface.hf_fs for listing directories, browsing trending items, or reading repository files. Requests for paper or docs lookups, or any non-Hugging-Face repo, do not belong here."
+    },
+    "huggingface.hf_fs": {
+      "use_when": "The user asks for Hugging Face Hub filesystem operations: listing trending models, current or daily papers and paper leaderboards, reading a known hf:// file or paper text (cat), discovering files by name (find), or searching a resource root or owner scope. Use cat directly when an exact text-file hf:// URI is given.",
+      "not_when": "Finding repositories by keyword or topic (hub_repo_search). Getting details, dataset schema or previews for a known repo (hub_repo_details). Reading identity or account context (hf_whoami). Questions about a GitHub repo's code (deepwiki or gitmcp). Searching repository file contents rather than names or paths is not supported by this tool."
+    },
+    "cloudflare-docs.search_cloudflare_documentation": {
+      "use_when": "The user asks a question about any Cloudflare product or feature (Workers, Pages, R2, D1, KV, Durable Objects, Queues, Workers AI, Vectorize, Zero Trust, Tunnel, WARP, DNS, CDN/Cache, Terraform, billing, and similar) and needs an answer from Cloudflare's official documentation.",
+      "not_when": "Do not use for migrating Pages projects to Workers; call cloudflare-docs.migrate_pages_to_workers_guide first. Do not use for non-Cloudflare libraries or cloud providers (context7, aws-knowledge, microsoft-learn). Do not use for live account actions or reading a specific repository, which need other tools."
+    },
+    "cloudflare-docs.migrate_pages_to_workers_guide": {
+      "use_when": "The user is migrating a Cloudflare Pages project to Workers, or asks how to move a Pages site to Workers; call this guide before any migration work. It takes no arguments.",
+      "not_when": "General questions about Pages or Workers features or configuration, which belong to cloudflare-docs.search_cloudflare_documentation. Migrating non-Cloudflare sites, which belongs to other documentation servers. Requests to actually deploy or change a project are not served by this read-only guide."
+    },
+    "gitmcp.match_common_libs_owner_repo_mapping": {
+      "use_when": "The user names only a library, package or framework (e.g. \"requests\", \"tokio\") and no owner/repo or GitHub URL is given, so the owner/repo must be resolved before docs or code can be fetched from this server. Call it first, then pass the returned owner and repo to the other gitmcp tools.",
+      "not_when": "Do not use when an owner and repo are already known or a GitHub URL is given (use gitmcp.fetch_generic_documentation, gitmcp.search_generic_documentation or gitmcp.search_generic_code directly). Do not use for code or API-doc questions about a library without a GitHub repo context, which are better served by context7.resolve-library-id or deepwiki.ask_wiki_question. It returns no documentation itself."
+    },
+    "gitmcp.fetch_generic_documentation": {
+      "use_when": "The user wants general documentation or an overview of a specific GitHub project and gives or implies its owner and repo name (e.g. 'docs for vercel/next.js'). Call match_common_libs_owner_repo_mapping first only if just a library name is known.",
+      "not_when": "The request asks a specific question about the docs (use gitmcp.search_generic_documentation); asks for source code or files (use gitmcp.search_generic_code); only a library name is given with no owner/repo (use gitmcp.match_common_libs_owner_repo_mapping first); or the user wants a DeepWiki-style Q&A about a repo (deepwiki.ask_wiki_question). Cannot serve requests without a GitHub owner and repo."
+    },
+    "gitmcp.search_generic_documentation": {
+      "use_when": "The user asks a specific question about a GitHub repository's documentation (API usage, configuration, a feature, an error) and provides the owner and repo, or the repo is identifiable from the request. Pass the concrete question as the query. Best for targeted lookups rather than reading whole docs.",
+      "not_when": "Do not use when the user wants the full documentation rather than a specific answer (use gitmcp.fetch_generic_documentation). Do not use to find source code (use gitmcp.search_generic_code). If only a library name is known and no owner/repo, first use gitmcp.match_common_libs_owner_repo_mapping. Not for non-GitHub documentation sites."
+    },
+    "gitmcp.search_generic_code": {
+      "use_when": "The user wants to find source code, functions, or files containing a specific term inside a GitHub repository whose owner and repo name are known or given. Use it for code search rather than documentation.",
+      "not_when": "Requests for documentation or conceptual explanations (gitmcp.search_generic_documentation or gitmcp.fetch_generic_documentation). Requests with only a library name and no owner/repo (gitmcp.match_common_libs_owner_repo_mapping first). Searches of code on other hosts or in a wiki (syn-codehost.search_code, deepwiki.ask_wiki_question). Questions about repositories not on GitHub, and fetching a known URL (gitmcp.fetch_generic_url_content)."
+    },
+    "gitmcp.fetch_generic_url_content": {
+      "use_when": "The user gives an absolute URL to fetch, or a documentation page on another site was referenced in previously fetched docs and must now be retrieved. Use only when the exact URL is already known.",
+      "not_when": "Requests to read a GitHub repo's documentation by owner and project name (gitmcp.fetch_generic_documentation), to search docs semantically (gitmcp.search_generic_documentation), or to find code (gitmcp.search_generic_code). Also not for a library name without a URL (gitmcp.match_common_libs_owner_repo_mapping), or for open-ended web queries with no URL (syn-web.web_search)."
+    },
+    "astro-docs.search_astro_docs": {
+      "use_when": "The user asks how to do something in the Astro web framework, asks about Astro concepts, config, components, routing, or APIs, and wants official Astro documentation searched by keyword. Use it first for any Astro-specific question.",
+      "not_when": "Requests for Astro docs already given by URL or page path (fetch content directly instead). Questions about other frameworks or libraries, such as Svelte (svelte.get-documentation) or generic library docs (context7.query-docs), and questions about a GitHub repository's wiki (deepwiki.ask_wiki_question). Requests to write, scaffold or deploy Astro code are not searches; this tool only returns documentation."
+    },
+    "svelte.get-documentation": {
+      "use_when": "The user asks for Svelte 5 or SvelteKit documentation on a specific topic, rune, or file path (e.g. \"$state\", \"routing\", \"cli/overview\"), after list-sections has identified the relevant section names. Pass one name or an array of names covering every related section.",
+      "not_when": "Do not call first for writing or fixing Svelte component code; use svelte.svelte-autofixer (svelte.svelte-autofixer) before this tool. Do not use to list the available sections (svelte.list-sections). Do not use for SvelteKit-unrelated frameworks such as Astro (astro-docs.search_astro_docs) or general library docs (context7.query-docs)."
+    },
+    "svelte.list-sections": {
+      "use_when": "The user asks any Svelte or SvelteKit question or is about to write Svelte code and needs to know which documentation sections exist. Call this FIRST, before get_documentation, to see section titles and use_cases. No arguments are needed.",
+      "not_when": "Do not use when the user already names a specific section or topic to read (use svelte.get-documentation instead). Do not use to check or fix component code (svelte.svelte-autofixer). Do not use for non-Svelte frameworks; route those to context7 or astro-docs."
+    },
+    "svelte.playground-link": {
+      "use_when": "The user wants a shareable Svelte Playground link for a finished Svelte code snippet, and the code is not already saved as a file in their project. Ask the user first whether they want a playground link. Pass all files at root level, with tailwind set to true only if Tailwind classes are used.",
+      "not_when": "Do not use if the component was already written to a file in the user's project (use the file directly). Do not use before the user confirms they want a playground link, and do not use to check or fix code (svelte.svelte-autofixer). Not for documentation lookups (svelte.get-documentation) or for code that has not been finalized yet."
+    },
+    "svelte.svelte-autofixer": {
+      "use_when": "The user asks to write, create, or generate Svelte component or module code (Svelte 4 or 5, runes, .svelte or .svelte.ts files). Call it on the drafted code before returning it to the user, passing desired_svelte_version and the filename when known.",
+      "not_when": "Requests that only ask for Svelte or SvelteKit documentation or explanations (svelte.get-documentation or svelte.list-sections), a Playground link (svelte.playground-link), or code in non-Svelte frameworks such as Astro (astro-docs.search_astro_docs). Do not call it on code the user has not asked for or without the code string."
+    },
+    "kiwi.search-flight": {
+      "use_when": "The user wants to search for flights between two places (city, airport name or IATA codes) for given dates and passengers. Call first for any flight search, including one-way, return, date ranges and budget or time filters. Origin and destination may be plain place names.",
+      "not_when": "Booking or cancelling a flight, or finding hotels, itineraries or flight status (not this tool). Requests about the flight search tool itself, its bugs or feature wishes go to kiwi.feedback-to-devs. Flight search requests may also match syn-travel.search_flights, which is on a different server; this tool is the one for Kiwi.com results and their booking links."
+    },
+    "kiwi.feedback-to-devs": {
+      "use_when": "The user wants to report a bug, error, or feature request specifically about the Kiwi.com flight search tool itself: wrong search results, incorrect pricing or itineraries, broken filters, or errors returned by search responses. Include the error message and relevant context.",
+      "not_when": "Requests to search for or book flights (use kiwi.search-flight). Feedback about other MCP servers, Claude or app behaviour, voice mode, account or booking management, or unrelated Kiwi.com features; this channel will not reach the right team for those. Requests for flight search across other providers (syn-travel.search_flights) are also not feedback."
+    },
+    "syn-tickets.create_issue": {
+      "use_when": "The user asks to open, file, log or raise a new bug, task, story or feature request in the issue tracker, with a title and details to record. Use it only when no existing issue key is involved.",
+      "not_when": "Do not use for finding existing issues (syn-tickets.search_issues), reading one issue by key (syn-tickets.get_issue), changing its status (syn-tickets.transition_issue), adding a note to an existing issue (syn-tickets.add_comment), linking issues (syn-tickets.link_issues), or writing a wiki page (syn-wiki.create_page). Do not use for a new note (syn-notes.create_note)."
+    },
+    "syn-tickets.search_issues": {
+      "use_when": "The user wants to find or list issues by a query, status, assignee or label, e.g. 'show my open bugs' or 'what is assigned to Priya in review'. Use when no specific issue key is given yet.",
+      "not_when": "Do not use if the user gives an issue key and wants its details or comments (syn-tickets.get_issue). Do not use to create, move, comment on or link issues (syn-tickets.create_issue, transition_issue, add_comment, link_issues). Do not use for sprint listings (syn-tickets.list_sprints) or for searching code, wiki pages or chat messages."
+    },
+    "syn-tickets.get_issue": {
+      "use_when": "The user asks for the full details of one specific issue (comments, history, status changes) and gives its issue key, such as ENG-123. Call it first when the key is already known. The tool takes no input parameters.",
+      "not_when": "Do not use it to find issues by keyword, status, assignee or label; use syn-tickets.search_issues. Do not use it to create, move, comment on or link issues; use create_issue, transition_issue, add_comment or link_issues. Do not use it when no issue key is known, since it cannot look one up."
+    },
+    "syn-tickets.transition_issue": {
+      "use_when": "The user asks to move an issue to another workflow status (e.g. start work, mark done, send to review, reopen). Its input schema declares no parameters, so the issue key and target status must come from the user or prior context; the schema gives no way to pass them.",
+      "not_when": "Requests to read or find an issue (syn-tickets.get_issue, syn-tickets.search_issues), change its assignee, labels or content, add a comment (syn-tickets.add_comment), link issues (syn-tickets.link_issues), or create one (syn-tickets.create_issue). Moving an opportunity stage in the CRM belongs to syn-crm.update_opportunity_stage."
+    },
+    "syn-tickets.add_comment": {
+      "use_when": "The user wants to add a comment or note to an existing issue and already gives the issue key or id. Use this first when the request is to post, leave or append a message on a known ticket.",
+      "not_when": "Requests to read an issue's comments or history (use syn-tickets.get_issue), to find issues (use syn-tickets.search_issues), to change status (use syn-tickets.transition_issue), or to create a new issue (use syn-tickets.create_issue). Do not use when no issue key is known; this tool's input schema has no declared parameters, so the target issue cannot be specified reliably from the schema alone. Team chat messages belong to syn-chat.post_message."
+    },
+    "syn-tickets.list_sprints": {
+      "use_when": "The user asks which sprints are active or upcoming on an issue-tracker board, or needs sprint names or dates before planning or assigning work. Takes no arguments and lists sprints for the board.",
+      "not_when": "Requests for the issues inside a sprint or matching criteria (use syn-tickets.search_issues). Requests to create or move sprint work (use syn-tickets.create_issue or syn-tickets.transition_issue). Calendar meetings or sprint ceremonies (use syn-calendar.list_events)."
+    },
+    "syn-tickets.link_issues": {
+      "use_when": "A user wants to relate two existing issues as blocking, related, or duplicate. Requires both issue keys to be known, since the input schema lists no parameters and the keys must come from the request or from search_issues or get_issue.",
+      "not_when": "Creating a new issue (syn-tickets.create_issue), changing an issue's status (syn-tickets.transition_issue), or only commenting on an issue (syn-tickets.add_comment). Finding issues by criteria goes to syn-tickets.search_issues, and reading one issue goes to syn-tickets.get_issue. Requests about pull requests or code links belong to syn-codehost tools."
+    },
+    "syn-chat.post_message": {
+      "use_when": "The user wants to send, publish, or write a new message into a team chat channel or thread (e.g. \"post this update to #releases\", \"reply in the incident thread\"). Needs a target channel or thread the user has named.",
+      "not_when": "Requests to find existing messages (syn-chat.search_messages), read a thread's replies (syn-chat.get_thread), list channels (syn-chat.list_channels), react to a message with an emoji (syn-chat.add_reaction), or change the user's own status (syn-chat.set_status). Sending email (syn-mail.send_mail), creating a notes entry (syn-notes.create_note), or a wiki page (syn-wiki.create_page) are not chat posts."
+    },
+    "syn-chat.search_messages": {
+      "use_when": "The user wants to find messages, discussions or past chat content in the team workspace by keywords or phrases (e.g. \"find where we talked about the outage\", \"search chat for the vendor name\"). Use it when the target is message text rather than a channel list or a known thread.",
+      "not_when": "Do not use for listing which channels exist (syn-chat.list_channels), for reading all replies of a thread already identified (syn-chat.get_thread), or for posting or reacting to messages. Do not use for searching documents, wiki pages, email or tickets (syn-wiki.search_pages, syn-mail.search_mail, syn-tickets.search_issues, syn-kb-search.semantic_search). Also not for general web queries (syn-web.web_search)."
+    },
+    "syn-chat.list_channels": {
+      "use_when": "The user wants to see, browse, or find which channels exist in the workspace, or needs a channel id before posting, searching, or reading within a channel. Takes no input; lists both public and private channels visible to the user.",
+      "not_when": "Requests to read or search message contents (use syn-chat.search_messages), to fetch a specific thread (use syn-chat.get_thread), or to send a message (use syn-chat.post_message). Requests about people or org structure (use syn-hr.org_chart) or about documentation spaces (use syn-wiki.list_spaces) are unrelated, even if they mention teams or channels."
+    },
+    "syn-chat.get_thread": {
+      "use_when": "The user wants all replies in a chat message thread fetched or reviewed, and the thread is identified by context (e.g. a thread the user is already working in). Takes no input parameters, so it returns the thread the call is scoped to.",
+      "not_when": "Requests to post or send a reply (syn-chat.post_message), to find messages by keyword across channels (syn-chat.search_messages), or to list channels (syn-chat.list_channels). Do not use for reading a thread that lives outside this chat workspace, such as email threads (syn-mail.get_message) or wiki page history (syn-wiki.page_history)."
+    },
+    "syn-chat.add_reaction": {
+      "use_when": "The user wants to add an emoji reaction (e.g. a thumbs-up or checkmark) to an existing chat message. Requires that the target message is already identified. The input schema is empty, so the message reference must be resolved from context before calling.",
+      "not_when": "Requests to write a new message or reply (syn-chat.post_message), to find a message by its content (syn-chat.search_messages), to read a whole thread (syn-chat.get_thread), or to change the user's own status emoji (syn-chat.set_status). Requests for feedback sent to a team outside chat, such as an email (syn-mail.send_mail), are unrelated."
+    },
+    "syn-chat.set_status": {
+      "use_when": "The user wants to change their own chat presence: set or update their status text and/or status emoji (e.g. 'set my status to in a meeting', 'mark me as out sick with a thermometer emoji'). The status text and emoji are supplied through the call.",
+      "not_when": "Requests to post a message, reply in a thread or react to a message (syn-chat.post_message, syn-chat.add_reaction), to read channel content (syn-chat.search_messages, syn-chat.get_thread), or to set a calendar out-of-office or availability (syn-calendar.create_event). Do not use it to look up another user's status or to change any other person's profile."
+    },
+    "syn-crm.search_accounts": {
+      "use_when": "The user wants to find a customer account or company record in the CRM by name, web domain, or account owner, for example to look up an account before reviewing its deals or contacts. Use it first when no account id is known yet.",
+      "not_when": "Do not use for a known opportunity or deal (syn-crm.get_opportunity), for people at an account (syn-crm.list_contacts), for changing deal stages (syn-crm.update_opportunity_stage), or for logging calls or emails (syn-crm.log_activity). Do not use for internal employees (syn-hr.get_employee) or for market data on public companies (syn-market.company_filings)."
+    },
+    "syn-crm.get_opportunity": {
+      "use_when": "The user wants to see an opportunity's current stage, amount and close date, but the tool takes no input parameters, so it returns the opportunity without a lookup key. Use it only when a single opportunity is already in context. Use search_accounts to find an account first.",
+      "not_when": "Changing an opportunity's stage (syn-crm.update_opportunity_stage); finding a customer account by name, domain or owner (syn-crm.search_accounts); a quarter-level sales forecast (syn-crm.forecast_summary); listing contacts (syn-crm.list_contacts); requests needing a specific opportunity id or filter, which this schema cannot accept."
+    },
+    "syn-crm.update_opportunity_stage": {
+      "use_when": "A user wants to move a sales opportunity to a different pipeline stage (e.g. mark it won, lost or in negotiation) and the opportunity id is already known. Use get_opportunity first if only the deal name is known.",
+      "not_when": "Requests to read an opportunity's current stage, amount or close date (syn-crm.get_opportunity), or to find an account by name (syn-crm.search_accounts). Do not use when no opportunity id is available; resolve it first."
+    },
+    "syn-crm.log_activity": {
+      "use_when": "The user wants to record a call, meeting or email that already happened against a contact or account in the CRM. Use it to log an activity note, not to look up or change deal data.",
+      "not_when": "Requests to find an account (syn-crm.search_accounts), list a company's contacts (syn-crm.list_contacts), read a deal's stage or amount (syn-crm.get_opportunity), move a deal to another stage (syn-crm.update_opportunity_stage), or summarize the quarterly forecast (syn-crm.forecast_summary). Sending or drafting an email itself belongs to syn-mail.send_mail or syn-mail.draft_mail, and scheduling a meeting belongs to syn-calendar.create_event."
+    },
+    "syn-crm.list_contacts": {
+      "use_when": "The user wants the contacts (people) linked to a specific customer account and the account id is already known. Takes no arguments, so it lists contacts for the account in the current context. Call search_accounts first if the account is not yet identified.",
+      "not_when": "Requests to find or look up an account by name, domain or owner (syn-crm.search_accounts); requests for opportunity details (syn-crm.get_opportunity); logging a call, meeting or email against a contact (syn-crm.log_activity); or searching contacts by name across all accounts, which this tool cannot do because it takes no search input."
+    },
+    "syn-crm.forecast_summary": {
+      "use_when": "The user asks for a summary or overview of the sales forecast for a quarter, such as this quarter's or a named quarter's forecast, with no specific opportunity or account identified. Takes no parameters, so it cannot filter by quarter or owner.",
+      "not_when": "Requests about one specific deal's stage, amount or close date (syn-crm.get_opportunity). Requests to change a deal's stage (syn-crm.update_opportunity_stage). Requests to find accounts (syn-crm.search_accounts). Requests for a forecast of market prices or weather, or a budget or finance forecast (syn-finance.get_budget). Requests needing a specific quarter or filter, since this tool accepts no inputs."
+    },
+    "syn-warehouse.run_sql": {
+      "use_when": "The user wants to run a read-only SQL query against the cloud data warehouse and get rows back, and the SQL statement is already written or can be composed. Use it to answer data questions once the query is known.",
+      "not_when": "Do not use for finding table names or schemas (syn-warehouse.list_tables, syn-warehouse.describe_table), for the execution plan of a statement (syn-warehouse.explain_query), or for past run times and credit usage (syn-warehouse.query_history). Not for writing or modifying data; it is read-only."
+    },
+    "syn-warehouse.list_tables": {
+      "use_when": "The user wants to see which tables or views exist in the warehouse schema, or is browsing or exploring what data is available before querying. No table name is needed.",
+      "not_when": "Requests for a specific table's columns, types or comments (syn-warehouse.describe_table), for rows or aggregates (syn-warehouse.run_sql), for past query runtimes or credits (syn-warehouse.query_history), or for a query plan (syn-warehouse.explain_query). Questions about data in a warehouse-external system belong to other servers."
+    },
+    "syn-warehouse.describe_table": {
+      "use_when": "The user asks for the columns, data types or column comments of one specific table, and the table name is known or can be given. Call it first to inspect a table's structure before writing queries against it.",
+      "not_when": "Listing which tables or views exist in a schema (syn-warehouse.list_tables). Fetching or aggregating actual row data (syn-warehouse.run_sql). Query plans or performance (syn-warehouse.explain_query). Recent query runtimes or credit use (syn-warehouse.query_history). Requests about a database outside this warehouse, such as AWS RDS documentation (aws-knowledge.aws___read_documentation)."
+    },
+    "syn-warehouse.query_history": {
+      "use_when": "The user asks what queries ran recently on the warehouse, or wants to find slow or expensive queries by runtime or credits consumed. Takes no inputs; it lists recent history rather than running anything.",
+      "not_when": "Requests to run or fetch data with SQL (syn-warehouse.run_sql), to see a query's execution plan (syn-warehouse.explain_query), or to browse table structure (syn-warehouse.list_tables, syn-warehouse.describe_table). Questions about monitoring metrics or logs of other systems (syn-monitoring.query_metrics, syn-monitoring.search_logs) are out of scope."
+    },
+    "syn-warehouse.explain_query": {
+      "use_when": "The user asks how a SQL statement will execute, wants its query plan, or asks why a query is slow or what joins and scans it performs. Requires the SQL text to be supplied; the tool takes no declared inputs, so the statement must be passed in the call.",
+      "not_when": "Use syn-warehouse.run_sql to actually execute or return rows of a query (not run_sql's job to explain). Use syn-warehouse.query_history for past runtime or credit usage of queries already run. Use syn-warehouse.describe_table for column definitions. Requests for general SQL tutorials or docs belong to no tool here; this tool cannot explain SQL concepts or optimize queries it was not given."
+    },
+    "syn-wiki.search_pages": {
+      "use_when": "A user wants to find internal wiki pages or runbooks by keyword or topic, when they do not already have a page id or URL. Use it to locate candidate pages before reading one in full.",
+      "not_when": "Do not use when the user already gives a page id or URL and wants its content (use syn-wiki.get_page). Do not use to see who edited a page or when (use syn-wiki.page_history), to list spaces (use syn-wiki.list_spaces), or to create a page (use syn-wiki.create_page). Do not use for public or external documentation (e.g. deepwiki.ask_wiki_question, kb-search.semantic_search is for ingested knowledge collections, not wiki search)."
+    },
+    "syn-wiki.get_page": {
+      "use_when": "The user gives a specific wiki page identifier or URL and wants that page's full content, or the agent already has the exact page reference from an earlier search or listing. Call search_pages first if the user only has keywords.",
+      "not_when": "Requests for keyword discovery of pages or runbooks (syn-wiki.search_pages), edit history or who changed a page (syn-wiki.page_history), listing spaces (syn-wiki.list_spaces), creating pages (syn-wiki.create_page), or public or vendor documentation outside the internal wiki (kb-search or deepwiki tools)."
+    },
+    "syn-wiki.create_page": {
+      "use_when": "The user wants a brand-new wiki page created in an internal space (e.g. a new runbook, guide or doc page). Use only when the target space is known or can be determined, since creating is a write action. Editing or reading an existing page is a different tool.",
+      "not_when": "Finding existing pages or runbooks by keyword (syn-wiki.search_pages); reading the content of a known page (syn-wiki.get_page); listing which spaces exist (syn-wiki.list_spaces); reviewing who changed a page (syn-wiki.page_history); creating a plain note outside the wiki (syn-notes.create_note); questions about public product docs such as AWS or Microsoft (not internal wiki). This tool cannot edit an existing page's content."
+    },
+    "syn-wiki.list_spaces": {
+      "use_when": "The user asks what wiki spaces exist or which spaces they can access, or needs a space key before creating a page or searching within one. Takes no input and needs no prior id.",
+      "not_when": "Requests to find pages by keyword or topic (syn-wiki.search_pages), to read a known page (syn-wiki.get_page), or to create a page (syn-wiki.create_page). Questions about public documentation or the web belong to other servers, not this wiki."
+    },
+    "syn-wiki.page_history": {
+      "use_when": "The user asks for the edit history, revision log, change log or who-changed-what-and-when of a wiki page, when a page is already identified. Takes no arguments; the target page is determined by the call context, so use it only when the page is already known.",
+      "not_when": "Requests to read a page's current content (syn-wiki.get_page), find a page by keyword (syn-wiki.search_pages), or change a page (syn-wiki.create_page). Questions about a page's current content, or edit history of code files (syn-codehost.get_file or syn-codehost.list_pull_requests), are not this tool."
+    },
+    "syn-codehost.search_code": {
+      "use_when": "A user wants to find where a term, function, symbol, string or pattern appears across internal source repositories. Use as the first call when no repository or file path is already known and the request is a keyword or code-content search.",
+      "not_when": "Do not use when the user already gives a repository and file path or ref and wants the file contents (syn-codehost.get_file). Do not use to list branches (syn-codehost.list_branches), open pull requests (syn-codehost.list_pull_requests), or CI status (syn-codehost.get_build_status). Do not use for searching public open-source library docs or code (gitmcp.search_generic_code, context7.query-docs) or for searching internal wiki pages (syn-wiki.search_pages)."
+    },
+    "syn-codehost.get_file": {
+      "use_when": "The user wants the contents of a specific file in an internal repository at a given branch, tag or commit, and already supplies the repo, path and ref (or they are clear from context). Use it to read one known file.",
+      "not_when": "Requests to find code by keyword or pattern across repos (use syn-codehost.search_code), listing branches (syn-codehost.list_branches), pull requests (syn-codehost.list_pull_requests), CI status (syn-codehost.get_build_status), or reading internal wiki pages (syn-wiki.get_page). Do not use for public GitHub repos or library docs (gitmcp.fetch_generic_documentation, deepwiki.read_wiki_contents), or for files stored in shared drives (syn-storage.read_file)."
+    },
+    "syn-codehost.list_pull_requests": {
+      "use_when": "The user asks to see, list or review open pull requests in an internal repository. Note: the schema takes no repo argument, so the target repo must be implied by context. Use it for PR listings, not for creating or reading a specific PR's code.",
+      "not_when": "Requests to open a new pull request (syn-codehost.create_pull_request), to list branches (syn-codehost.list_branches), to read file contents (syn-codehost.get_file), to search code (syn-codehost.search_code), or to check CI results (syn-codehost.get_build_status). Requests for tickets or issues belong to syn-tickets, not here."
+    },
+    "syn-codehost.create_pull_request": {
+      "use_when": "The user wants to open a pull request from an existing branch in an internal repository. The tool takes no parameters, so the agent should confirm the branch and repo through context or another tool before calling it.",
+      "not_when": "Listing existing open pull requests (syn-codehost.list_pull_requests), listing branches (syn-codehost.list_branches), searching code (syn-codehost.search_code), reading a file (syn-codehost.get_file), checking CI results (syn-codehost.get_build_status), or creating a tracking ticket (syn-tickets.create_issue). Not for public GitHub repositories (gitmcp tools)."
+    },
+    "syn-codehost.get_build_status": {
+      "use_when": "The user asks for the CI build or pipeline status of a commit (passing, failing, running). The tool takes no parameters, so the commit it reports on is determined by the server; use it when the user wants build results rather than code or review data.",
+      "not_when": "Requests to find code (syn-codehost.search_code), read a file (syn-codehost.get_file), or review open pull requests (syn-codehost.list_pull_requests). Failing-test or deployment questions about production services belong to syn-monitoring.query_metrics or syn-cloudops.list_instances. Ticket status belongs to syn-tickets.get_issue, not CI."
+    },
+    "syn-codehost.list_branches": {
+      "use_when": "The user asks what branches exist in an internal repository, or wants to see branch names before reading a file or opening a pull request. Use it as the first call when the request is about branch listing. It takes no arguments.",
+      "not_when": "Requests to read file contents at a branch (syn-codehost.get_file), to search code (syn-codehost.search_code), to list open pull requests (syn-codehost.list_pull_requests), to open a pull request (syn-codehost.create_pull_request), or to check CI status (syn-codehost.get_build_status). Requests about public GitHub-hosted repositories, which are not on this internal server (gitmcp.search_generic_code, deepwiki.read_wiki_structure)."
+    },
+    "syn-calendar.list_events": {
+      "use_when": "The user asks what is on their calendar, what meetings or events they have over a given day, week or date range, or wants to review upcoming or past events. Takes no required inputs, so it works for a plain 'what do I have today/this week' question.",
+      "not_when": "Do not use to find a time several people are all free (use syn-calendar.find_free_slots), to book or schedule a new meeting (use syn-calendar.create_event), to cancel an event (use syn-calendar.cancel_event), or to accept or decline an invite (use syn-calendar.rsvp). Not for searching chat or mail for meeting mentions."
+    },
+    "syn-calendar.create_event": {
+      "use_when": "The user wants to schedule a new meeting or call with specific attendees and wants a video link included. Use it when the user asks to set up, book or create a meeting, even if the time is not yet fixed.",
+      "not_when": "Do not use for finding a common free time without booking (syn-calendar.find_free_slots), for viewing existing events (syn-calendar.list_events), for changing or removing an event (syn-calendar.cancel_event), or for answering an invite (syn-calendar.rsvp). Do not use to post a chat invitation (syn-chat.post_message) or to send an email invite (syn-mail.send_mail)."
+    },
+    "syn-calendar.find_free_slots": {
+      "use_when": "The user wants to find a time when several people are all free, for example \"when can Ana, Ben and I meet this week?\" or \"find a slot everyone is available for a 30-minute call\". Call it first when the goal is choosing a meeting time, not reading events.",
+      "not_when": "Requests to list someone's events or agenda (syn-calendar.list_events), to book the meeting once a time is chosen (syn-calendar.create_event), to cancel (syn-calendar.cancel_event), or to answer an invite (syn-calendar.rsvp). Do not use for single-person availability questions answerable by listing events."
+    },
+    "syn-calendar.cancel_event": {
+      "use_when": "The user wants to cancel a calendar event and notify its attendees. Cancelling needs the event to be identified, so this is the right first call once the user has named or pointed to the specific event being cancelled.",
+      "not_when": "Requests to declining an invite as an attendee (syn-calendar.rsvp), to find or view events (syn-calendar.list_events), to schedule new meetings (syn-calendar.create_event), or to cancel a travel booking (syn-travel.cancel_booking). This tool takes no input parameters, so it cannot identify which event to cancel on its own."
+    },
+    "syn-calendar.rsvp": {
+      "use_when": "The user wants to respond to a calendar invite: accept, decline, or tentatively accept it. Takes no parameters, so the target invite must be identified from context or the user's request before calling.",
+      "not_when": "Requests to create a new meeting (syn-calendar.create_event), cancel an existing event for everyone (syn-calendar.cancel_event), find free time (syn-calendar.find_free_slots), or view events (syn-calendar.list_events). Email replies to invitations are not calendar RSVPs and belong to syn-mail.send_mail."
+    },
+    "syn-mail.search_mail": {
+      "use_when": "The user wants to find emails in the mailbox by keywords, sender, subject or other criteria, and has not yet identified a specific message. Use it to locate candidate messages before reading or acting on one.",
+      "not_when": "The user already has a message id and wants its full body or attachments (syn-mail.get_message). The user wants to write or send mail (syn-mail.draft_mail or syn-mail.send_mail). The user wants to archive a conversation (syn-mail.archive_thread). Searching chat, wiki or files belongs to other servers, such as syn-chat.search_messages, syn-wiki.search_pages or syn-storage.search_files."
+    },
+    "syn-mail.send_mail": {
+      "use_when": "The user asks to send, email, or mail a message to one or more recipients now, with the content already composed or clearly specified. Use this as the final send step, not for saving or reviewing.",
+      "not_when": "Do not use to save a message for later review or editing (use syn-mail.draft_mail). Do not use to find existing emails (use syn-mail.search_mail). Do not use to post in chat channels (syn-chat.post_message) or to log CRM activity (syn-crm.log_activity). Do not use to schedule calendar invites (syn-calendar.create_event)."
+    },
+    "syn-mail.draft_mail": {
+      "use_when": "The user wants to compose or prepare an email without sending it yet, such as writing a message to review later or saving a reply as a draft. Takes no input parameters, so it only creates a draft; any content must be set afterward.",
+      "not_when": "Requests to actually send an email now (syn-mail.send_mail), to find existing messages (syn-mail.search_mail), to read a specific message (syn-mail.get_message), or to archive a thread (syn-mail.archive_thread). Do not use for posting chat messages (syn-chat.post_message) or creating wiki pages (syn-wiki.create_page)."
+    },
+    "syn-mail.get_message": {
+      "use_when": "The user wants the full content of one specific email, including its attachment list, and already provides the message identifier. Use this as the first call once a message id is known, typically after search_mail has returned it.",
+      "not_when": "Requests to find emails by sender, subject or keyword without a known id (use syn-mail.search_mail). Requests to send, compose or draft mail (syn-mail.send_mail or syn-mail.draft_mail), archiving a conversation (syn-mail.archive_thread), or reading a file stored outside the mailbox (syn-storage.read_file). Note: this tool's input schema has no parameters, so the message identifier is not passed here and the tool cannot select a specific message on its own."
+    },
+    "syn-mail.archive_thread": {
+      "use_when": "The user wants an existing email thread moved out of the inbox to the archive, such as \"archive this thread\" or \"file this conversation away\". Takes no arguments, so the thread must already be selected or identified in the current mail context.",
+      "not_when": "Requests to find or list emails (syn-mail.search_mail), read a single message's body or attachments (syn-mail.get_message), delete mail, or move it to a specific folder. Requests to archive files or documents belong to syn-storage, not email threads."
+    },
+    "syn-storage.search_files": {
+      "use_when": "The user wants to find files or folders in cloud storage by name or by words inside their content, and does not already have a file id or path. Use this first when the file location is unknown.",
+      "not_when": "The user already has a file path or id and wants its text (use syn-storage.read_file). The user wants the contents of one known folder (use syn-storage.list_folder). The user wants to upload, or to share a file (use syn-storage.upload_file or syn-storage.share_file). Searching chat, wiki, email, or code (use syn-chat.search_messages, syn-wiki.search_pages, syn-mail.search_mail, syn-codehost.search_code) or the knowledge base (syn-kb-search.semantic_search)."
+    },
+    "syn-storage.read_file": {
+      "use_when": "The user wants the text content of a specific stored file and already gives its file id or exact path. Call search_files first if only a file name or topic is known.",
+      "not_when": "Searching for a file by name or topic when no id or path is given (syn-storage.search_files). Browsing folder contents (syn-storage.list_folder). Uploading or sharing files (syn-storage.upload_file, syn-storage.share_file). Reading wiki pages (syn-wiki.get_page) or code repository files (syn-codehost.get_file). This tool takes no input parameters in its schema, so it cannot select a file itself."
+    },
+    "syn-storage.upload_file": {
+      "use_when": "The user wants to put a new local file into syn-storage inside a specific folder, e.g. 'upload this report to the Q3 folder'. Use when the target folder is known or can be identified from the request.",
+      "not_when": "Requests to read or view an existing file's text (syn-storage.read_file), find a file by name or content (syn-storage.search_files), browse a folder's contents (syn-storage.list_folder), or grant access to a file (syn-storage.share_file). Requests to add documents to a semantic search index (syn-kb-search.ingest_document) or to create wiki pages (syn-wiki.create_page) are different."
+    },
+    "syn-storage.share_file": {
+      "use_when": "The user wants to share a stored file or folder with specific people or set who can view or edit it. Works best when the file is already identified by path or id; if the file must be located first, search_files comes first.",
+      "not_when": "Searching for a file by name or content (syn-storage.search_files); reading a file's text (syn-storage.read_file); uploading a new file (syn-storage.upload_file); browsing folder contents (syn-storage.list_folder); sending the file as an email attachment (syn-mail.send_mail); posting a file link in chat (syn-chat.post_message)."
+    },
+    "syn-storage.list_folder": {
+      "use_when": "The user wants to see or browse the contents of a folder in cloud storage, such as listing what files and subfolders it holds. Use it when the folder is known or the user asks what is in it; the input schema takes no parameters.",
+      "not_when": "Use syn-storage.search_files when the user only has a name or keywords and needs to locate a file or folder across storage. Do not use it to read a file's text (syn-storage.read_file), upload (syn-storage.upload_file), or share (syn-storage.share_file). Requests for web or documentation folders belong to other servers."
+    },
+    "syn-hr.get_employee": {
+      "use_when": "The user asks for an employee's profile, who their manager is, or which team they belong to, and names the person or gives an employee id. Use it first for questions about a single person's HR record.",
+      "not_when": "Requests for the full reporting chain above a person (use syn-hr.org_chart), leave requests or balances (use syn-hr.request_leave or syn-hr.leave_balance), or public holidays (use syn-hr.list_holidays). Do not use it for searching people across other systems such as syn-chat or syn-crm contacts."
+    },
+    "syn-hr.request_leave": {
+      "use_when": "The user wants to submit, file or request time off or leave for themselves (e.g. vacation, sick day, parental leave). Use when the request is to create a new leave request now. The tool takes no parameters, so dates and leave type must be gathered from the conversation or confirmed with the user.",
+      "not_when": "Checking how many days are left (syn-hr.leave_balance); listing public holidays (syn-hr.list_holidays); looking up who manages someone (syn-hr.get_employee or syn-hr.org_chart); booking travel or calendar blocks (syn-travel.book_flight, syn-calendar.create_event). Do not use to approve or cancel existing leave, since no such capability is listed here."
+    },
+    "syn-hr.leave_balance": {
+      "use_when": "The user asks how many leave days, vacation days or PTO they have left, or what their remaining leave balance is. Takes no input; it reports the current user's own balance.",
+      "not_when": "Requests to submit, book or request time off (use syn-hr.request_leave). Requests for public holiday dates (use syn-hr.list_holidays). Balances for other people, which this tool cannot look up; use syn-hr.get_employee for profile details. Calendar availability (use syn-calendar.find_free_slots)."
+    },
+    "syn-hr.org_chart": {
+      "use_when": "The user asks who a person reports to, or wants the full chain of management up to the top, for a named employee. Use when the target person is identified, e.g. by name or employee id. Returns the reporting chain, so it is the first call for hierarchy questions.",
+      "not_when": "Requests for a person's profile, role, team or direct manager details without the chain (syn-hr.get_employee). Leave requests or balances (syn-hr.request_leave, syn-hr.leave_balance). Org structure questions with no person named, or questions about company policy (syn-wiki.search_pages). Note: this tool's schema has no input parameters, so it may not accept a specific person; the target must be resolved via syn-hr.get_employee first if a person must be specified."
+    },
+    "syn-hr.list_holidays": {
+      "use_when": "A user asks which public holidays fall in their office, or which days are non-working for an office location in a given year. Takes no arguments, so the office is determined by the server's default configuration rather than by a parameter.",
+      "not_when": "Requests for an employee's personal leave balance (syn-hr.leave_balance), submitting time off (syn-hr.request_leave), or someone's team or manager (syn-hr.get_employee). Calendar events and meetings belong to syn-calendar.list_events, not public holidays."
+    },
+    "syn-finance.submit_expense": {
+      "use_when": "The user wants to file a new expense claim or reimbursement with a receipt and a category, for example \"submit my taxi receipt under travel\". The target tool's input schema has no declared parameters, so pass the receipt and category details as described in the request.",
+      "not_when": "Do not use for approving or rejecting an expense already pending (syn-finance.approve_expense), for looking up invoices from vendors (syn-finance.list_invoices), or for checking spend against a cost center budget (syn-finance.get_budget). Do not use for currency conversion of amounts (syn-finance.currency_convert). Do not use for booking business travel (syn-travel.book_flight)."
+    },
+    "syn-finance.list_invoices": {
+      "use_when": "The user wants to see, list or look up existing invoices, optionally filtered by vendor, status or date range (e.g. 'show unpaid invoices from Acme last month'). Takes no required arguments, so it can run without ids.",
+      "not_when": "Requests to submit a new expense or receipt (syn-finance.submit_expense), approve or reject a pending expense (syn-finance.approve_expense), check budget versus actual spend (syn-finance.get_budget), or convert currency amounts (syn-finance.currency_convert). Searching for invoice-related documents in storage or the knowledge base is not this tool."
+    },
+    "syn-finance.approve_expense": {
+      "use_when": "The user wants to approve or reject a pending expense claim, for example after reviewing it as a manager or approver. The tool's input schema takes no parameters, so the pending expense must be identified in the request context before calling.",
+      "not_when": "Requests to create or submit a new expense claim (use syn-finance.submit_expense), to view invoices (use syn-finance.list_invoices), to check budget versus actuals (use syn-finance.get_budget), or to convert currency amounts (use syn-finance.currency_convert). Also not for approving pull requests, leave requests, or incidents in other systems."
+    },
+    "syn-finance.get_budget": {
+      "use_when": "The user asks for budget versus actual spending for a cost center, such as how much is left in a department's budget or whether a cost center is over budget. Takes no inputs, so it fits when the user names no specific parameters.",
+      "not_when": "Requests to list or find individual invoices (syn-finance.list_invoices), to log or submit a spend (syn-finance.submit_expense), to approve or reject a pending expense (syn-finance.approve_expense), to convert currency amounts (syn-finance.currency_convert), or cloud spending reports (syn-cloudops.get_cost_report). Its schema has no parameters, so it cannot target a particular cost center or period."
+    },
+    "syn-finance.currency_convert": {
+      "use_when": "The user asks to convert an amount from one currency to another at today's rate for expense or invoice work. Note that the tool takes no input parameters, so the amount and currencies may need to be supplied in the request itself.",
+      "not_when": "Requests for a historical or forward FX rate, or a stock or market price (syn-market.fx_rate or syn-market.get_quote). Requests to read or total invoices in a foreign currency (syn-finance.list_invoices). Requests to submit an expense in a foreign currency (syn-finance.submit_expense). Generic web or definition lookups about currencies (syn-web.web_search)."
+    },
+    "syn-monitoring.query_metrics": {
+      "use_when": "The user wants a numeric time series for a named metric (e.g. CPU, latency, error rate, request count) over a time window, optionally filtered by labels such as service or host. Use it to chart or measure how a metric changed over time.",
+      "not_when": "Requests about log lines or error text (search_logs), currently firing alerts (list_alerts), acknowledging an alert (ack_alert), a single distributed trace by ID (get_trace), or dashboards (list_dashboards). Requests about SQL data in the warehouse (syn-warehouse.run_sql) or generic web metrics or statistics are not served here."
+    },
+    "syn-monitoring.search_logs": {
+      "use_when": "The user wants to find application log lines by service name, log level (error, warn, info) or free text, such as investigating errors in a service or searching for a message. Use it before metrics or traces when the question is about what a service logged.",
+      "not_when": "Requests for a numeric time series or trend (use syn-monitoring.query_metrics); a specific distributed trace by ID (use syn-monitoring.get_trace); currently firing alerts (use syn-monitoring.list_alerts); acknowledging an alert (use syn-monitoring.ack_alert); or dashboards (use syn-monitoring.list_dashboards). Do not use it for searching documents or wiki pages (syn-wiki.search_pages) or incident records (syn-incident.list_incidents)."
+    },
+    "syn-monitoring.list_alerts": {
+      "use_when": "The user asks what is currently firing, what alerts are active, or what is paging right now, and wants a list of open alerts. Takes no arguments, so it fits any broad request for the current alert state.",
+      "not_when": "Do not use to acknowledge or silence an alert (use syn-monitoring.ack_alert), to chart a metric's history (use syn-monitoring.query_metrics), to search log lines (use syn-monitoring.search_logs), or to view dashboards (use syn-monitoring.list_dashboards). It cannot list resolved or historical alerts, and it does not cover on-call rotations or incident records (syn-incident.get_oncall, syn-incident.list_incidents)."
+    },
+    "syn-monitoring.ack_alert": {
+      "use_when": "The user wants to acknowledge, mark as seen, or silence a firing alert in the syn-monitoring system, typically after reviewing it. The tool takes no parameters, so it acts on the alert it is currently scoped to; call syn-monitoring.list_alerts first if the user has not identified which alert.",
+      "not_when": "Requests to view or list firing alerts (use syn-monitoring.list_alerts), to declare or update a formal incident (use syn-incident.declare_incident or syn-incident.update_incident), to resolve or close a ticket (use syn-tickets.transition_issue), or to investigate metrics or logs (use syn-monitoring.query_metrics or syn-monitoring.search_logs)."
+    },
+    "syn-monitoring.get_trace": {
+      "use_when": "The user wants to look up a distributed trace by its trace ID, for example to inspect spans and latency across services. Requires a trace ID to be supplied or already known; the tool takes no parameters in its schema, so the ID must be provided through the call context.",
+      "not_when": "Requests to search application log lines (use syn-monitoring.search_logs), to chart metric values over time (use syn-monitoring.query_metrics), or to see currently firing alerts (use syn-monitoring.list_alerts). Do not use for finding a trace without any ID, since search by service or text is not supported here."
+    },
+    "syn-monitoring.list_dashboards": {
+      "use_when": "The user asks to see, list, or browse the available monitoring dashboards, or wants to find a dashboard by name. Takes no arguments, so use it to discover dashboards before anything else.",
+      "not_when": "Requests for metric values or trends (query_metrics), log lines (search_logs), firing alerts (list_alerts), acknowledging an alert (ack_alert), or a trace by ID (get_trace). Requests about wiki pages or runbooks belong to syn-wiki.search_pages."
+    },
+    "syn-incident.declare_incident": {
+      "use_when": "The user wants to start a new incident, outage or emergency response and asks to declare it, with severity and an incident commander to be set. Takes no input parameters, so the severity and commander are supplied afterwards or through the tool's own flow.",
+      "not_when": "Posting progress on an existing incident (syn-incident.update_incident), listing incidents (syn-incident.list_incidents), finding who is on call (syn-incident.get_oncall), writing a postmortem (syn-incident.write_postmortem), or a plain bug or feature request (syn-tickets.create_issue). Requests about alerts or metrics without declaring an incident belong to syn-monitoring."
+    },
+    "syn-incident.update_incident": {
+      "use_when": "The user wants to post a status update, progress note or resolution message to an existing incident (for example 'tell the incident channel the DB failover is done'). Use it when the incident is already identified or open; if the incident id is unknown, find it first with list_incidents.",
+      "not_when": "Declaring a brand-new incident (declare_incident). Listing or finding incidents (list_incidents). Looking up who is on call (get_oncall). Writing a postmortem document (write_postmortem). General chat announcements that are not tied to an incident (syn-chat.post_message)."
+    },
+    "syn-incident.list_incidents": {
+      "use_when": "The user asks what incidents are open or recently happened, wants an overview or status list of incidents, or needs to find an incident id before updating or writing a postmortem. Takes no arguments, so it lists all open and recent incidents.",
+      "not_when": "Declaring a new incident (syn-incident.declare_incident), posting a status update to a known incident (syn-incident.update_incident), finding who is on call (syn-incident.get_oncall), or writing a postmortem (syn-incident.write_postmortem). Requests to search general alerts or metrics (syn-monitoring.list_alerts, syn-monitoring.query_metrics) or to search ticket issues (syn-tickets.search_issues) are not incident listings."
+    },
+    "syn-incident.get_oncall": {
+      "use_when": "The user asks who is on call right now for a service or team, or who to page or escalate to for an ongoing issue. Takes no arguments, so it reports current on-call coverage across the server's services.",
+      "not_when": "Requests to declare, update, or list incidents (use syn-incident.declare_incident, update_incident, or list_incidents), or to look up an on-call schedule for a future date, which this tool cannot provide. Questions about who owns a code repo belong to syn-codehost.get_file or syn-wiki.search_pages, not here."
+    },
+    "syn-incident.write_postmortem": {
+      "use_when": "The user asks to create or draft a postmortem document for an incident that has already happened and been tracked. The tool takes no arguments, so the incident is taken from the current incident context of the session; use it when that context is already established.",
+      "not_when": "Do not use to declare a new incident (declare_incident), post a status update to a live incident (update_incident), or find existing incidents (list_incidents). Do not use to write a generic wiki page (syn-wiki.create_page), file an ticket (syn-tickets.create_issue), or look up who is on call (get_oncall). Do not use when no incident is identified and the user has not named one."
+    },
+    "syn-travel.search_flights": {
+      "use_when": "A user wants to find or compare corporate-policy-compliant flights between two cities on given dates. Call this before book_flight, since a flight must be selected from these results first.",
+      "not_when": "Requests to book a flight already chosen (book_flight), to find hotels (search_hotels), to view an existing trip (get_itinerary), or to cancel a trip (cancel_booking). General flight searches without the corporate travel context may fit kiwi.search-flight instead."
+    },
+    "syn-travel.book_flight": {
+      "use_when": "The user wants to book or confirm a flight that has already been selected, for example after a search has returned options and the user picks one. Takes no arguments, so the selection must already be in context from a prior search. Charges the corporate card.",
+      "not_when": "The user wants to find or compare flight options first (use syn-travel.search_flights). Do not use for hotels (syn-travel.search_hotels), for viewing existing trips (syn-travel.get_itinerary), or for cancelling a booking (syn-travel.cancel_booking). For flights outside corporate policy or consumer flight search, use kiwi.search-flight instead."
+    },
+    "syn-travel.search_hotels": {
+      "use_when": "The user wants to find or compare hotels for a trip, especially a corporate or policy-compliant stay near a city, venue or address. Use it as the first step before booking a room; the tool takes no arguments, so the location and dates are usually set in the conversation before calling it.",
+      "not_when": "Requests to find flights (search_flights), book or cancel travel (book_flight, cancel_booking), or review an existing trip (get_itinerary). Restaurant, attraction or general place lookups go to syn-maps.search_places, and live hotel prices or reviews outside the corporate policy set are not covered here."
+    },
+    "syn-travel.get_itinerary": {
+      "use_when": "The user asks for their own upcoming trips, travel schedule, or booked itinerary (e.g. \"what are my trips next week\", \"show my travel plans\"). Takes no parameters, so it applies when the user wants to see existing bookings rather than search or book.",
+      "not_when": "Searching for new flights (syn-travel.search_flights), booking (syn-travel.book_flight), hotel search (syn-travel.search_hotels), or cancelling a trip (syn-travel.cancel_booking). Generic flight searches outside the corporate policy (kiwi.search-flight) and calendar meetings (syn-calendar.list_events) are different. Cannot look up another employee's itinerary or past trips."
+    },
+    "syn-travel.cancel_booking": {
+      "use_when": "The user asks to cancel an existing corporate travel booking (flight or hotel) and no booking identifier is given. Cancel only after the booking is identified; the tool takes no input parameters, so it cannot target a specific booking by id.",
+      "not_when": "Requests to cancel a calendar meeting or event (syn-calendar.cancel_event), to look up trips first (syn-travel.get_itinerary), to book a new flight (syn-travel.book_flight), or to search flights or hotels. Cannot target a specific booking, since the schema accepts no identifier."
+    },
+    "syn-kb-search.semantic_search": {
+      "use_when": "The user asks a natural-language question whose answer should be found in their own uploaded documents, reports, or knowledge base, and they need the passages matched by meaning rather than exact keywords. Takes no arguments, so the query is handled by the search itself.",
+      "not_when": "Requests to add or index a new document (syn-kb-search.ingest_document), list or delete collections (syn-kb-search.list_collections, syn-kb-search.delete_collection), or find content in the team wiki (syn-wiki.search_pages), web pages (syn-web.web_search), or code (syn-codehost.search_code). Not for public library or cloud documentation (context7, aws-knowledge, microsoft-learn)."
+    },
+    "syn-kb-search.ingest_document": {
+      "use_when": "The user wants a new document added to the search index, e.g. 'index this file' or 'add this to the knowledge base', so it can later be found by semantic search. Since this tool takes no arguments, it is typically the first step to make content searchable.",
+      "not_when": "Searching or asking questions over already-uploaded documents (syn-kb-search.semantic_search). Listing collections (syn-kb-search.list_collections). Deleting an index collection (syn-kb-search.delete_collection). Searching the open web (syn-web.web_search). Reading a stored file without indexing it (syn-storage.read_file)."
+    },
+    "syn-kb-search.list_collections": {
+      "use_when": "The user asks which vector collections or document sets exist in the knowledge base, or needs collection names before searching or deleting one. Use it first when a semantic search needs a collection id and none is known.",
+      "not_when": "Requests to search document content or answer a question from uploaded documents (use syn-kb-search.semantic_search), adding a document (syn-kb-search.ingest_document), or removing a collection (syn-kb-search.delete_collection). Questions about the contents of a document, or about wiki pages (syn-wiki.search_pages), are not served by this tool."
+    },
+    "syn-kb-search.delete_collection": {
+      "use_when": "The user explicitly wants to permanently delete a vector collection from the syn-kb-search index and has named the collection or confirmed the deletion. Use only after the user has clearly asked for removal, not for browsing.",
+      "not_when": "Requests to see or find which collections exist (syn-kb-search.list_collections), to search document content (syn-kb-search.semantic_search), or to add documents (syn-kb-search.ingest_document). Deleting documents from other systems such as syn-storage.upload_file or syn-wiki pages is not covered here. This tool takes no parameters, so it cannot target a specific named collection, and it should not be called speculatively."
+    },
+    "syn-web.web_search": {
+      "use_when": "The user wants to find information on the public web, look up current news or general facts, or discover which pages exist on a topic, and has not supplied a specific URL. Use it first when the user gives only a query, not a page to read.",
+      "not_when": "The user already gives a specific URL to read (use syn-web.fetch_url); the user wants a visual capture of a page (use syn-web.screenshot_url); the question is about a library or framework's documentation (use context7.query-docs or a docs-specific search such as microsoft-learn.microsoft_docs_search or aws-knowledge.aws___search_documentation); the question is about a GitHub repository (use deepwiki.ask_wiki_question or gitmcp.search_generic_documentation); the request concerns internal company data such as wiki, files, tickets or email (use syn-wiki.search_pages, syn-storage.search_files, syn-tickets.search_issues or syn-mail.search_mail). This tool takes no parameters and cannot filter by date, site, or language."
+    },
+    "syn-web.fetch_url": {
+      "use_when": "The user gives a specific web page URL and wants its content read or summarized. Use when a full URL is already in the request and the goal is the page's text, not a search for pages.",
+      "not_when": "The user wants to find pages on a topic without a URL (use syn-web.web_search). The user wants a visual image of the page layout (use syn-web.screenshot_url). The user asks about Microsoft, AWS, Cloudflare, Astro, Svelte or library docs that a dedicated docs tool covers. Requests for internal wiki pages (syn-wiki.get_page) or repository files (syn-codehost.get_file)."
+    },
+    "syn-web.screenshot_url": {
+      "use_when": "The user wants a visual capture of a web page, e.g. to see its layout, rendering or appearance, when the page URL is already known. Use only when the URL is given or obvious from context.",
+      "not_when": "Requests for the page's text or content (use syn-web.fetch_url). Requests to find pages without a known URL (use syn-web.web_search). Requests to read a docs site's text with no image needed (use syn-web.fetch_url or the relevant docs tool, such as deepwiki.read_wiki_contents). Requests to view a Figma or design file (use syn-design.export_frame)."
+    },
+    "syn-design.get_design_file": {
+      "use_when": "The user wants an overview of a design file: its frames (screens or artboards) and components, or the structure of a file they have identified. Use it when the file is already specified, typically by an id or key the user supplied.",
+      "not_when": "Requests to export or download a frame as an image (syn-design.export_frame); requests for the file's comments or review feedback (syn-design.list_comments); requests for design tokens, colors, or spacing values (syn-design.get_variables); requests to search code or fetch source files (syn-codehost.get_file); requests for web page screenshots (syn-web.screenshot_url); requests for general documentation about design tools (syn-kb-search.semantic_search)."
+    },
+    "syn-design.export_frame": {
+      "use_when": "The user wants a frame from a design file rendered or saved as a PNG or SVG image. Use only when the frame to export is already identified, since the tool takes no arguments and cannot choose a frame itself.",
+      "not_when": "Listing frames or components to find one (syn-design.get_design_file). Reading design tokens or variables (syn-design.get_variables). Reading comments (syn-design.list_comments). Taking a screenshot of a web page URL (syn-web.screenshot_url). Storing or sharing the resulting file (syn-storage.upload_file or syn-storage.share_file). The tool cannot select a frame or accept a file id, so requests needing a specific frame chosen first should start with syn-design.get_design_file."
+    },
+    "syn-design.list_comments": {
+      "use_when": "The user asks to see, list, or review the comments left on a design file, for example reviewer feedback or open discussion threads. Takes no arguments; the target design file is already selected on the server.",
+      "not_when": "Requests to fetch frames, components or layout (syn-design.get_design_file), to export images (syn-design.export_frame), or to read design tokens and variables (syn-design.get_variables). Requests to add or reply to comments are not supported by this tool. Ticket or issue comments belong to syn-tickets.add_comment, and chat messages belong to syn-chat."
+    },
+    "syn-design.get_variables": {
+      "use_when": "The user asks for the design system's tokens or variables, such as colors, spacing, typography scales, or theme values, and needs them as a set. Takes no arguments, so call it whenever the user wants the full token set.",
+      "not_when": "Requests for the frames, components or layout of a design file (use syn-design.get_design_file), exporting an image of a frame (use syn-design.export_frame), or design review feedback (use syn-design.list_comments). Questions about design tokens in code libraries belong to other servers, not this tool."
+    },
+    "syn-market.get_quote": {
+      "use_when": "The user asks for the current or latest price of a stock ticker, such as 'what is AAPL trading at' or 'latest quote for MSFT'. Takes no parameters, so the ticker must be supplied by the call context or the server default; it is the first call for a live price point.",
+      "not_when": "Historical prices or charts over a time range (use syn-market.get_ohlc); spot currency exchange rates (use syn-market.fx_rate); company regulatory documents (use syn-market.company_filings); upcoming earnings dates (use syn-market.earnings_calendar); non-financial lookups such as weather or web search."
+    },
+    "syn-market.get_ohlc": {
+      "use_when": "The user asks for OHLC candles, open/high/low/close bars, or historical price bars for a stock ticker over a chosen interval (e.g. daily or hourly). Call it first when a ticker and time interval are given or implied.",
+      "not_when": "Requests for the current or latest price of one ticker (use syn-market.get_quote). Requests for regulatory filings (syn-market.company_filings), earnings dates (syn-market.earnings_calendar), or FX rates (syn-market.fx_rate). Requests for charts or images of prices (syn-web.screenshot_url), or prices stored in the company warehouse (syn-warehouse.run_sql). Its input schema declares no parameters, so do not assume it accepts a ticker or interval through the schema."
+    },
+    "syn-market.company_filings": {
+      "use_when": "The user asks for recent regulatory filings (e.g. SEC-style reports) of a company. The tool takes no parameters, so it lists filings only from the server's default scope; use it when the user wants filings and no more specific tool or company identifier is required.",
+      "not_when": "Do not use for a stock's current price (syn-market.get_quote), historical price candles (syn-market.get_ohlc), upcoming earnings dates (syn-market.earnings_calendar), or currency exchange rates (syn-market.fx_rate). It takes no company argument, so it cannot filter to a named company; for general web research about a company use syn-web.web_search instead."
+    },
+    "syn-market.earnings_calendar": {
+      "use_when": "The user asks for upcoming earnings dates or which companies report earnings soon. Takes no arguments, so it returns the calendar as a whole; use it for broad 'what reports this week' style questions.",
+      "not_when": "Do not use for a single company's price (use syn-market.get_quote), historical candles (use syn-market.get_ohlc), or regulatory filings such as 10-Q or 8-K (use syn-market.company_filings). Earnings results or analyst estimates are not provided by any listed tool."
+    },
+    "syn-market.fx_rate": {
+      "use_when": "The user asks for the current spot exchange rate between two currencies (e.g. EUR to USD, GBP/JPY). Input schema has no parameters, so the currency pair must be determined from the request before calling.",
+      "not_when": "Stock or equity prices for a ticker (use syn-market.get_quote). Historical or intraday candles (use syn-market.get_ohlc). Converting a specific amount of money for expenses or budgets (use syn-finance.currency_convert). Weather or general web questions about currencies (use syn-web.web_search)."
+    },
+    "syn-cloudops.list_instances": {
+      "use_when": "The user asks to see, list, or check compute instances (virtual machines or servers) and their current state or region, e.g. which instances are running or stopped, or where instances are deployed. Takes no inputs, so it can be called directly.",
+      "not_when": "Requests to restart an instance (syn-cloudops.restart_instance), to check spend (syn-cloudops.get_cost_report), to list storage buckets (syn-cloudops.list_buckets), to inspect an IAM role (syn-cloudops.describe_iam_role), or to deploy infrastructure (syn-cloudops.deploy_stack). Questions about how a cloud service works in general belong to documentation servers such as aws-knowledge, not this tool."
+    },
+    "syn-cloudops.restart_instance": {
+      "use_when": "The user asks to restart, reboot or bounce a compute instance. The tool takes no parameters, so it can only act once the target instance is identified; if no instance is specified, list instances first with syn-cloudops.list_instances.",
+      "not_when": "Requests to list or check instance state (syn-cloudops.list_instances), to deploy or update infrastructure (syn-cloudops.deploy_stack), to review spend (syn-cloudops.get_cost_report), or to restart a service or process inside an instance, which this tool does not describe. Questions about how restarts work in AWS docs belong to aws-knowledge.aws___read_documentation."
+    },
+    "syn-cloudops.get_cost_report": {
+      "use_when": "The user asks for cloud spend, costs, or billing broken down by service for a period (e.g. 'what did we spend on cloud last month?'). Takes no inputs; the period is not a parameter, so use it for the overall cost-by-service view.",
+      "not_when": "Requests to list compute instances or their states (syn-cloudops.list_instances), to inspect IAM roles (syn-cloudops.describe_iam_role), or to view finance invoices and budgets (syn-finance.list_invoices, syn-finance.get_budget). Do not use for metrics or performance data (syn-monitoring.query_metrics), or for a specific date range or per-resource cost filtering, since this tool accepts no parameters."
+    },
+    "syn-cloudops.list_buckets": {
+      "use_when": "The user asks to list, see, or check object storage buckets in the cloud account (e.g. S3-style buckets), or wants to find a bucket by name before doing something with it. No arguments are needed.",
+      "not_when": "Requests about compute VMs or their state (syn-cloudops.list_instances), spend or billing (syn-cloudops.get_cost_report), IAM roles or policies (syn-cloudops.describe_iam_role), or file storage of user documents (syn-storage.list_folder, syn-storage.search_files). Do not use it to read or upload objects inside a bucket; it only lists buckets."
+    },
+    "syn-cloudops.describe_iam_role": {
+      "use_when": "The user asks to describe, inspect, or review an IAM role and its attached policies in the cloud account. The tool takes no inputs, so it fits when a role context is already established.",
+      "not_when": "Requests to list compute instances (syn-cloudops.list_instances), restart a server (syn-cloudops.restart_instance), check spend (syn-cloudops.get_cost_report), or list storage buckets (syn-cloudops.list_buckets). Questions about how IAM works in general, with no account role to inspect, belong to documentation tools such as aws-knowledge.aws___search_documentation."
+    },
+    "syn-cloudops.deploy_stack": {
+      "use_when": "A user asks to deploy, apply or roll out an infrastructure-as-code stack (e.g. Terraform, CloudFormation or similar) to the cloud. It takes no input parameters, so the stack target is implied by the server context.",
+      "not_when": "Requests to restart a running compute instance (syn-cloudops.restart_instance), list instances or buckets, check spend (syn-cloudops.get_cost_report), inspect an IAM role (syn-cloudops.describe_iam_role), or find documentation or how-to guidance about IaC (aws-knowledge.aws___search_documentation, microsoft-learn.microsoft_docs_search)."
+    },
+    "syn-notes.create_note": {
+      "use_when": "The user wants to start a brand-new personal note with content they supply, and no existing note id or title is being targeted. Use this when the request is to write, jot down, or save something as a new note.",
+      "not_when": "Do not use for adding text to an existing note (syn-notes.append_to_note). Do not use to find or read existing notes (syn-notes.search_notes). Do not use to create a wiki page or document (syn-wiki.create_page), a ticket (syn-tickets.create_issue), or a file (syn-storage.upload_file). Note: this tool's schema declares no input parameters, so it may need the content supplied through other means."
+    },
+    "syn-notes.search_notes": {
+      "use_when": "The user wants to find or look up their own personal notes by a text query or keyword. Use this first when the user asks what they wrote or noted about something, before reading or changing any note. The tool takes no input parameters in its schema, so the query has to be supplied through the search itself.",
+      "not_when": "Requests to create a new note (syn-notes.create_note), add text to an existing note (syn-notes.append_to_note), or search workplace wiki pages (syn-wiki.search_pages), chat messages (syn-chat.search_messages), files (syn-storage.search_files) or email (syn-mail.search_mail). Also not for general web or documentation searches."
+    },
+    "syn-notes.append_to_note": {
+      "use_when": "The user wants to add text to the end of an existing personal note and the target note is already identified. Use after syn-notes.search_notes if the note id is unknown. The input schema has no declared parameters, so supply the note reference and text as the tool expects.",
+      "not_when": "Creating a brand-new note (syn-notes.create_note). Finding or locating a note by its content (syn-notes.search_notes). Editing or replacing existing note text rather than appending (no listed tool does this). Adding comments to a ticket (syn-tickets.add_comment) or wiki pages (syn-wiki.create_page) rather than personal notes."
+    },
+    "syn-weather.current_weather": {
+      "use_when": "The user asks for the current weather conditions (right now, today's temperature, whether it is raining or sunny) in a city. The city name is the only thing needed, and the tool takes no parameters, so the location must be stated in the conversation or the request.",
+      "not_when": "Requests for weather over several days or future dates belong to syn-weather.forecast. Requests about a coordinate, address, or place lookup belong to syn-maps.geocode or syn-maps.search_places. Weather-related documentation or API questions are not served by this tool."
+    },
+    "syn-weather.forecast": {
+      "use_when": "The user asks for a multi-day or upcoming-days weather forecast for a location (e.g. this week, the weekend, next few days). The input schema takes no parameters, so the location must be inferred from the request or established before calling.",
+      "not_when": "Requests for the weather right now or current conditions in a city (use syn-weather.current_weather). Requests for travel-date weather planning that also involve booking (use syn-travel.search_flights or syn-travel.search_hotels). Requests for climate history, general weather science, or documentation questions, which no listed tool serves."
+    },
+    "syn-maps.search_places": {
+      "use_when": "The user wants to find places or businesses by a query, such as restaurants, cafes, pharmacies or shops, near a location. Use it when the user names a place type or business and an area, even if only a city or neighbourhood name is given.",
+      "not_when": "Do not use for turning a street address into coordinates (syn-maps.geocode), for route or travel-time directions between points (syn-maps.directions), or for flight, hotel or travel bookings (syn-travel.search_hotels, syn-travel.search_flights). Do not use for general web facts about places (syn-web.web_search)."
+    },
+    "syn-maps.directions": {
+      "use_when": "The user asks how to get from one place to another by driving, walking or public transit, and wants a route or travel directions. The input schema has no parameters, so origin and destination must be supplied through the agent's own context when the tool is invoked.",
+      "not_when": "Requests to find or look up places or businesses near a location (syn-maps.search_places), to convert an address into coordinates (syn-maps.geocode), or to plan flights or hotel travel (syn-travel.search_flights, syn-travel.search_hotels). Questions about live traffic or weather are not route requests."
+    },
+    "syn-maps.geocode": {
+      "use_when": "The user wants to turn a street address, place name or postal address into latitude and longitude coordinates. Use it first when a later step needs coordinates and the user has supplied an address rather than coordinates.",
+      "not_when": "Requests to find nearby places or businesses by category (syn-maps.search_places), routes or travel times between points (syn-maps.directions), or an address already given as coordinates. Requests for weather at a location (syn-weather.current_weather) or flight searches are not geocoding. Input schema has no parameters, so the address must be supplied by the agent in the call."
+    },
+    "syn-ml-registry.search_models": {
+      "use_when": "The user wants to find or look up registered ML models by name, task type, or owner, or needs to discover a model's identifier before other registry actions. Use as the first call when the model is not yet identified.",
+      "not_when": "The user already has a model identifier and version and wants its metrics or artifacts (use syn-ml-registry.get_model_version). Requests to move a version to staging or production (use syn-ml-registry.promote_model). Requests about experiment runs or training metrics (use syn-ml-registry.list_experiments). Questions about public Hugging Face models (use huggingface.hub_repo_search). Generic web or code searches are not registry lookups."
+    },
+    "syn-ml-registry.get_model_version": {
+      "use_when": "A user asks for metrics or artifacts of a specific model version and the version is already identified. The tool takes no parameters, so it can only be called when the server context fixes the version. Call search_models first if the model or version is not yet known.",
+      "not_when": "Requests to find models by name, task or owner (syn-ml-registry.search_models). Requests to promote a version to staging or production (syn-ml-registry.promote_model). Requests for experiment run metrics across runs (syn-ml-registry.list_experiments). Requests for live service metrics or dashboards (syn-monitoring.query_metrics). Requests for general ML documentation (huggingface.hub_repo_details or deepwiki)."
+    },
+    "syn-ml-registry.promote_model": {
+      "use_when": "A user asks to promote a specific registered model version to staging or production. The target stage and model version should be known before calling. Typically preceded by get_model_version to confirm metrics.",
+      "not_when": "Looking up or finding models (search_models), inspecting a version's metrics or artifacts (get_model_version), or reviewing experiment runs (list_experiments). Requests to deploy infrastructure or stacks belong to syn-cloudops.deploy_stack. Requests to promote with no known model version should first use search_models or get_model_version."
+    },
+    "syn-ml-registry.list_experiments": {
+      "use_when": "The user wants to see, compare or review experiment runs and their metrics (e.g. accuracy, loss across runs) without naming a specific model. Takes no arguments, so it lists runs broadly.",
+      "not_when": "Requests for metrics or artifacts of one known model version (use syn-ml-registry.get_model_version); finding registered models by name, task or owner (use syn-ml-registry.search_models); promoting a model to staging or production (use syn-ml-registry.promote_model); querying warehouse data or production monitoring metrics (use syn-warehouse.run_sql or syn-monitoring.query_metrics). Cannot filter by model or date since it takes no inputs."
+    }
+  }
+}

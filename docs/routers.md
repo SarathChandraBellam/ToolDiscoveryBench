@@ -51,6 +51,26 @@ Dialects:
 - `typesafe` (default): `POST https://api.typesafe.ai/v1/systemone`. The model id is bare (`jev-1.13`, pinned in `configs/bench.yaml`; `jev-latest` follows the alias) and questions use `type`.
 - `decisions`: any `/v1/decisions` gateway such as Bifrost or NanoGPT. Set `base_url`, `path` and `question_type_key`; the model id becomes `typesafe/jev-1.13` (pinned).
 
+### Option text (`option_text: plain | auto`)
+
+Each tool is one option of a `choice` question. `plain` (default) sends the MCP description,
+cut to `desc_chars`. `auto` is a preprocessing step the router runs itself when it loads a
+catalog (`setup`), so no hints are written or maintained by hand:
+
+- the MCP description is kept verbatim (same cut as `plain`);
+- `Key args` are pulled mechanically from the input schema (required first, with types);
+- `Use when` / `Not when` lines come from one temperature-0 LLM call per tool through
+  OpenRouter (`auto_hints_model`, default `anthropic/claude-haiku-5.5`, reasoning off). The
+  model sees only catalog data: the tool's name, description and schema, its sibling tools on
+  the same server, and the ids of other tools. It never sees questions or labels. The prompt
+  is `SYSTEM_PROMPT` in `src/tooldiscoverybench/catalog/auto_hints.py`.
+
+The result is cached in `data/cache/auto_hints/<fingerprint>.json` (keyed by catalog content,
+model and prompt) with its generation cost; the 141-tool bench catalog (31 real + 110
+synthetic) cost $0.049 once. `auto_hints_max_usd` caps a generation. Auto text costs about
+2–4x the input tokens of `plain`; at 150 tools it is about 26K tokens, close to Jev's 32K
+context. `or-jev-flat-autohint` in `configs/bench.yaml` is the opt-in variant.
+
 ### OpenAI Decisions API (`type: openai_decisions`)
 
 `POST https://api.openai.com/v1/decisions` (public beta), model `gpt-6-luna`. The request
