@@ -23,13 +23,15 @@ from tooldiscoverybench.routers.strands.models import build_model, provider_unav
 
 NATIVE_SYSTEM = (
     "You are an agent with access to the tools provided. For the user's request, call the "
-    "single most appropriate tool FIRST. Do not answer from your own knowledge; always call a tool."
+    "single most appropriate tool FIRST. Do not answer from your own knowledge. If none of the "
+    "tools can handle the request (it needs an action, account or service they don't provide), "
+    "call no tool and reply exactly NO_TOOL."
 )
 STRUCTURED_SYSTEM = (
     "You route user requests to tools. Available tools (id: description):\n{catalog}\n\n"
     "Return the id of the tool an agent should call FIRST, up to 4 alternative ids in order "
     "of preference, and your confidence (0-1) that the first choice is correct. Only use ids "
-    "from the list."
+    'from the list. If none of the tools can handle the request, return tool_id "none".'
 )
 
 _ModeResult = tuple[Ranked, dict[str, Any], dict[str, Any]]
@@ -75,6 +77,7 @@ class StrandsRouter(Router):
             output_tokens=usage.get("outputTokens"),
             calls=1,
             raw=raw,
+            abstained=bool(raw.get("abstained")),
         )
 
     # ------------------------------------------------------------------- native
@@ -138,7 +141,14 @@ class StrandsRouter(Router):
                 seen.add(tool_id)
                 ranked.append((tool_id, 1.0 / (i + 1)))
         usage = dict(getattr(result.metrics, "accumulated_usage", {}) or {})
-        return ranked, usage, {"picked": picked}
+        # Only an explicit NO_TOOL reply is an abstention. A call to an unknown tool name, or a
+        # reply with neither a tool call nor NO_TOOL, is a miss, not an abstention.
+        said_no_tool = "NO_TOOL" in str(result)
+        abstained = not picked and said_no_tool
+        raw = {"picked": picked, "abstained": abstained}
+        if picked and not ranked:
+            raw["unknown_tool"] = True
+        return ranked, usage, raw
 
     # --------------------------------------------------------------- structured
     def _structured(self, question: str, tools: list[Tool]) -> _ModeResult:
@@ -160,12 +170,18 @@ class StrandsRouter(Router):
             raise TypeError(f"expected ToolPick, got {type(pick).__name__}")
 
         valid = {t.id for t in tools}
+        abstained = pick.tool_id.strip().lower() in ("none", "null", "")
         ranked: Ranked = []
         seen: set[str] = set()
+        if not abstained and pick.tool_id not in valid:
+            # keep an invalid first pick as the (wrong) top-1 instead of silently promoting
+            # the first alternative
+            ranked.append((pick.tool_id, pick.confidence))
+            seen.add(pick.tool_id)
         for i, tool_id in enumerate([pick.tool_id, *pick.alternatives]):
             if tool_id in valid and tool_id not in seen:
                 seen.add(tool_id)
                 score = pick.confidence if i == 0 else (1 - pick.confidence) / (i + 1)
                 ranked.append((tool_id, score))
         usage = dict(getattr(result.metrics, "accumulated_usage", {}) or {})
-        return ranked, usage, {"pick": pick.model_dump()}
+        return ranked, usage, {"pick": pick.model_dump(), "abstained": abstained}

@@ -1,0 +1,80 @@
+{"qid": "cursor-bot-001", "question": "Build my Astro site locally and tell me which pages fail to prerender.", "near_miss_server": "astro-docs", "claude_v2": false}
+{"qid": "cursor-bot-002", "question": "Upgrade my Astro project from v4 to v5 by editing package.json and the lockfile for me.", "near_miss_server": "astro-docs", "claude_v2": true}
+{"qid": "cursor-bot-003", "question": "Deploy my Astro blog to Netlify and give me the live URL.", "near_miss_server": "astro-docs", "claude_v2": false}
+{"qid": "cursor-bot-004", "question": "Run astro check on my repo and fix the type errors it reports.", "near_miss_server": "astro-docs", "claude_v2": true}
+{"qid": "cursor-bot-005", "question": "Add a new post to src/content/blog in my Astro project with today's date in the frontmatter.", "near_miss_server": "astro-docs", "claude_v2": false}
+{"qid": "cursor-bot-006", "question": "Show me the build logs from my last failed Astro deploy on Vercel.", "near_miss_server": "astro-docs", "claude_v2": false}
+{"qid": "cursor-bot-007", "question": "Turn on the dev toolbar in the Astro dev server I have running on port 4321.", "near_miss_server": "astro-docs", "claude_v2": true}
+{"qid": "cursor-bot-008", "question": "Convert all the PNGs in my Astro project's public/ folder to WebP and update the imports.", "near_miss_server": "astro-docs", "claude_v2": true}
+{"qid": "cursor-bot-009", "question": "What did my AWS bill come to last month, broken down by service?", "near_miss_server": "aws-knowledge", "claude_v2": false}
+{"qid": "cursor-bot-010", "question": "Create an S3 bucket called acme-logs-prod in eu-west-1 with versioning turned on.", "near_miss_server": "aws-knowledge", "claude_v2": false}
+{"qid": "cursor-bot-011", "question": "Rotate the access keys for the IAM user ci-deployer in my account.", "near_miss_server": "aws-knowledge", "claude_v2": false}
+{"qid": "cursor-bot-012", "question": "Tail the CloudWatch logs for my order-processor Lambda from the last 10 minutes.", "near_miss_server": "aws-knowledge", "claude_v2": false}
+{"qid": "cursor-bot-013", "question": "Raise my account's Lambda concurrent executions quota to 3000 in us-east-1.", "near_miss_server": "aws-knowledge", "claude_v2": true}
+{"qid": "cursor-bot-014", "question": "Which of my EC2 instances are still running in ap-south-1 right now?", "near_miss_server": "aws-knowledge", "claude_v2": false}
+{"qid": "cursor-bot-015", "question": "Open an AWS support case about throttling on my DynamoDB orders table.", "near_miss_server": "aws-knowledge", "claude_v2": false}
+{"qid": "cursor-bot-016", "question": "Restore my RDS database prod-db to the automated snapshot from 2 am yesterday.", "near_miss_server": "aws-knowledge", "claude_v2": true}
+{"qid": "cursor-bot-017", "question": "Purge the Cloudflare cache for everything under example.com/assets/.", "near_miss_server": "cloudflare-docs", "claude_v2": true}
+{"qid": "cursor-bot-018", "question": "Add a CNAME record for api.example.com pointing at my load balancer in my Cloudflare zone.", "near_miss_server": "cloudflare-docs", "claude_v2": true}
+{"qid": "cursor-bot-019", "question": "How many requests and errors did my Workers route serve in the last 24 hours?", "near_miss_server": "cloudflare-docs", "claude_v2": false}
+{"qid": "cursor-bot-020", "question": "Roll my Cloudflare Pages project back to the previous deployment.", "near_miss_server": "cloudflare-docs", "claude_v2": false}
+{"qid": "cursor-bot-021", "question": "Turn on Under Attack mode for my domain right now, we're getting hammered.", "near_miss_server": "cloudflare-docs", "claude_v2": true}
+{"qid": "cursor-bot-022", "question": "Put the key feature_flags with value {\"beta\": true} into my production KV namespace.", "near_miss_server": "cloudflare-docs", "claude_v2": true}
+{"qid": "cursor-bot-023", "question": "Block the IP 203.0.113.42 in my Cloudflare WAF.", "near_miss_server": "cloudflare-docs", "claude_v2": true}
+{"qid": "cursor-bot-024", "question": "Tail the live logs of my Worker named image-resizer.", "near_miss_server": "cloudflare-docs", "claude_v2": false}
+{"qid": "cursor-bot-025", "question": "Upgrade every dependency in my package.json to its latest major version and run the install.", "near_miss_server": "context7", "claude_v2": true}
+{"qid": "cursor-bot-026", "question": "Publish version 2.3.0 of my npm package to the registry.", "near_miss_server": "context7", "claude_v2": true}
+{"qid": "cursor-bot-027", "question": "Run the Jest tests in my local project and tell me which ones fail.", "near_miss_server": "context7", "claude_v2": true}
+{"qid": "cursor-bot-028", "question": "Refactor the Express app in this folder to Fastify and save the changes.", "near_miss_server": "context7", "claude_v2": true}
+{"qid": "cursor-bot-029", "question": "Run npm audit fix on my project and commit the result.", "near_miss_server": "context7", "claude_v2": true}
+{"qid": "cursor-bot-030", "question": "Scaffold a new Next.js app called shop-ui in my ~/code directory.", "near_miss_server": "context7", "claude_v2": true}
+{"qid": "cursor-bot-031", "question": "Lint my whole TypeScript codebase with ESLint and auto-fix whatever it can.", "near_miss_server": "context7", "claude_v2": true}
+{"qid": "cursor-bot-032", "question": "Bump lodash in my yarn.lock to the patched version for the prototype pollution CVE.", "near_miss_server": "context7", "claude_v2": false}
+{"qid": "cursor-bot-033", "question": "Index my private repo acme/billing-service on DeepWiki so I can ask about it later.", "near_miss_server": "deepwiki", "claude_v2": true}
+{"qid": "cursor-bot-034", "question": "Regenerate the DeepWiki page for my repo, it's been stale since last week's refactor.", "near_miss_server": "deepwiki", "claude_v2": true}
+{"qid": "cursor-bot-035", "question": "Star the langchain-ai/langgraph repo on GitHub for me.", "near_miss_server": "deepwiki", "claude_v2": true}
+{"qid": "cursor-bot-036", "question": "Fork vercel/next.js into my GitHub account.", "near_miss_server": "deepwiki", "claude_v2": true}
+{"qid": "cursor-bot-037", "question": "Leave a review comment on line 42 of PR #318 in my repo saying the null check is missing.", "near_miss_server": "deepwiki", "claude_v2": false}
+{"qid": "cursor-bot-038", "question": "Clone facebook/react to my laptop and check out the v18.2.0 tag.", "near_miss_server": "deepwiki", "claude_v2": false}
+{"qid": "cursor-bot-039", "question": "Add a CONTRIBUTING.md to my repo explaining our branch naming rules and push it.", "near_miss_server": "deepwiki", "claude_v2": false}
+{"qid": "cursor-bot-040", "question": "Show me who has push access to my organisation's GitHub repos.", "near_miss_server": "deepwiki", "claude_v2": false}
+{"qid": "cursor-bot-041", "question": "Create a GitHub release v1.4.0 for my repo with the changelog since v1.3.0.", "near_miss_server": "gitmcp", "claude_v2": true}
+{"qid": "cursor-bot-042", "question": "Re-run the failed GitHub Actions workflow on my main branch.", "near_miss_server": "gitmcp", "claude_v2": false}
+{"qid": "cursor-bot-043", "question": "Delete the feature branches in my repo that were merged more than 30 days ago.", "near_miss_server": "gitmcp", "claude_v2": false}
+{"qid": "cursor-bot-044", "question": "Close every issue labelled wontfix in my repo.", "near_miss_server": "gitmcp", "claude_v2": false}
+{"qid": "cursor-bot-045", "question": "Set the DEPLOY_TOKEN secret for my repo's Actions to this new value: ghp_example123.", "near_miss_server": "gitmcp", "claude_v2": true}
+{"qid": "cursor-bot-046", "question": "Turn on branch protection for main so merges need two approvals.", "near_miss_server": "gitmcp", "claude_v2": true}
+{"qid": "cursor-bot-047", "question": "Archive my old repo sarath/old-portfolio on GitHub.", "near_miss_server": "gitmcp", "claude_v2": false}
+{"qid": "cursor-bot-048", "question": "Transfer ownership of my repo to the acme-labs organisation.", "near_miss_server": "gitmcp", "claude_v2": false}
+{"qid": "cursor-bot-049", "question": "Upload my fine-tuned checkpoint in ./outputs/checkpoint-500 to a new model repo on the Hub.", "near_miss_server": "huggingface", "claude_v2": false}
+{"qid": "cursor-bot-050", "question": "Delete the dataset repo sarath/scratch-data from my Hugging Face account.", "near_miss_server": "huggingface", "claude_v2": true}
+{"qid": "cursor-bot-051", "question": "Restart my Hugging Face Space, it's been stuck on Building for an hour.", "near_miss_server": "huggingface", "claude_v2": false}
+{"qid": "cursor-bot-052", "question": "Run Llama 3 8B Instruct on this prompt and give me the completion: write a haiku about rain.", "near_miss_server": "huggingface", "claude_v2": true}
+{"qid": "cursor-bot-053", "question": "Create a new write-scoped access token for my Hugging Face account.", "near_miss_server": "huggingface", "claude_v2": true}
+{"qid": "cursor-bot-054", "question": "Upgrade my Space's hardware to an A10G GPU.", "near_miss_server": "huggingface", "claude_v2": true}
+{"qid": "cursor-bot-055", "question": "Make my model repo sarath/tiny-llama-ft public.", "near_miss_server": "huggingface", "claude_v2": true}
+{"qid": "cursor-bot-056", "question": "Start an AutoTrain job to fine-tune distilbert on my CSV of support tickets.", "near_miss_server": "huggingface", "claude_v2": false}
+{"qid": "cursor-bot-057", "question": "Change the seat on my Kiwi booking to an aisle seat.", "near_miss_server": "kiwi", "claude_v2": false}
+{"qid": "cursor-bot-058", "question": "Add a checked bag to the flight I already booked for next Friday.", "near_miss_server": "kiwi", "claude_v2": false}
+{"qid": "cursor-bot-059", "question": "Check me in online for my flight tomorrow and send me the boarding pass.", "near_miss_server": "kiwi", "claude_v2": false}
+{"qid": "cursor-bot-060", "question": "Set a price alert that emails me when Delhi to London drops below 40,000 rupees.", "near_miss_server": "kiwi", "claude_v2": false}
+{"qid": "cursor-bot-061", "question": "What's the live status of flight AI 101 right now, is it delayed?", "near_miss_server": "kiwi", "claude_v2": false}
+{"qid": "cursor-bot-062", "question": "Rent a car at Lisbon airport from the 12th to the 15th.", "near_miss_server": "kiwi", "claude_v2": false}
+{"qid": "cursor-bot-063", "question": "Get me a travel insurance quote for a 10-day trip to Japan.", "near_miss_server": "kiwi", "claude_v2": false}
+{"qid": "cursor-bot-064", "question": "How many loyalty points do I have on my Kiwi.com account?", "near_miss_server": "kiwi", "claude_v2": false}
+{"qid": "cursor-bot-065", "question": "Create a new Azure resource group called rg-analytics in Central India.", "near_miss_server": "microsoft-learn", "claude_v2": true}
+{"qid": "cursor-bot-066", "question": "How much has my Azure subscription spent so far this month?", "near_miss_server": "microsoft-learn", "claude_v2": false}
+{"qid": "cursor-bot-067", "question": "Assign the Contributor role on my storage account to priya@contoso.com.", "near_miss_server": "microsoft-learn", "claude_v2": true}
+{"qid": "cursor-bot-068", "question": "Restart my Azure App Service web app called contoso-api.", "near_miss_server": "microsoft-learn", "claude_v2": false}
+{"qid": "cursor-bot-069", "question": "Schedule a Teams meeting with the platform team for Thursday at 4 pm.", "near_miss_server": "microsoft-learn", "claude_v2": false}
+{"qid": "cursor-bot-070", "question": "Renew my Microsoft 365 Business Standard licence for another year.", "near_miss_server": "microsoft-learn", "claude_v2": true}
+{"qid": "cursor-bot-071", "question": "Register me for the AZ-204 certification exam next month.", "near_miss_server": "microsoft-learn", "claude_v2": false}
+{"qid": "cursor-bot-072", "question": "Scale my AKS cluster's default node pool to 5 nodes.", "near_miss_server": "microsoft-learn", "claude_v2": true}
+{"qid": "cursor-bot-073", "question": "Start my SvelteKit dev server and tell me why the /dashboard route returns a 500.", "near_miss_server": "svelte", "claude_v2": true}
+{"qid": "cursor-bot-074", "question": "Deploy my SvelteKit app to Vercel production.", "near_miss_server": "svelte", "claude_v2": false}
+{"qid": "cursor-bot-075", "question": "Install svelte-check in my project and add it to our CI workflow.", "near_miss_server": "svelte", "claude_v2": true}
+{"qid": "cursor-bot-076", "question": "Write unit tests for my Counter.svelte component and run them with Vitest.", "near_miss_server": "svelte", "claude_v2": true}
+{"qid": "cursor-bot-077", "question": "Run the Svelte 5 migration command on my project and commit the result.", "near_miss_server": "svelte", "claude_v2": true}
+{"qid": "cursor-bot-078", "question": "Profile my Svelte app in the browser and tell me which component re-renders the most.", "near_miss_server": "svelte", "claude_v2": true}
+{"qid": "cursor-bot-079", "question": "Publish my Svelte component library to npm as @acme/ui.", "near_miss_server": "svelte", "claude_v2": false}
+{"qid": "cursor-bot-080", "question": "Open my SvelteKit app at localhost:5173 and take a screenshot of the homepage.", "near_miss_server": "svelte", "claude_v2": false}

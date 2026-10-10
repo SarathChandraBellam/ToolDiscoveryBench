@@ -1,0 +1,23 @@
+{
+  "family": "claude",
+  "labelers": [
+    "haiku",
+    "sonnet",
+    "opus"
+  ],
+  "questions": 162,
+  "accepted": 151,
+  "review": 11,
+  "first_pick_agreement": {
+    "agree_3of3": 159,
+    "agree_1of3": 1,
+    "agree_2of3": 2
+  },
+  "multi_gold": 13,
+  "final_gold_disagrees_with_drafter": 0,
+  "labeler_first_pick_in_final_gold": {
+    "haiku": "161/162",
+    "sonnet": "162/162",
+    "opus": "160/162"
+  }
+}

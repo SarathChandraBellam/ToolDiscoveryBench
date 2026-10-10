@@ -1,100 +1,205 @@
-# ToolDiscoveryBench
+<div align="center">
 
-How accurately, and how fast, can a router pick the right MCP tool for a request?
+# 🧭 ToolDiscoveryBench
 
-ToolDiscoveryBench runs the same golden questions against the same real MCP tool catalogs
-through several routers and reports accuracy, latency, cost and calibration side by side:
+**How accurately, how fast, and how cheaply can a router pick the right MCP tool?**
 
-- **TypeSafe Jev**: a decision model returning calibrated probabilities over tool choices
-- **Strands Agents**: an LLM picks the tool, via real tool calling or structured output
-- **BM25** and **embeddings**: free local baselines
+*And does it know when no tool fits?*
 
-Why this matters and what it tries to answer: [intent.md](intent.md).
+[![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![uv](https://img.shields.io/badge/managed%20with-uv-DE5FE9)](https://docs.astral.sh/uv/)
+[![Ruff](https://img.shields.io/badge/lint-ruff-D7FF64)](https://docs.astral.sh/ruff/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000)](https://github.com/psf/black)
+[![mypy: strict](https://img.shields.io/badge/mypy-strict-2A6DB2)](https://mypy-lang.org/)
+[![MCP](https://img.shields.io/badge/MCP-Streamable%20HTTP-6E56CF)](https://modelcontextprotocol.io/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-## Quick start
+</div>
+
+---
+
+Agents connected to many MCP servers face hundreds of overlapping tool descriptions. A
+**router** in front of the agent narrows them down. ToolDiscoveryBench replays the same
+questions, against the same real MCP tool catalogs, through every router, and grades each
+first pick against judged gold labels.
+
+```mermaid
+flowchart LR
+    Q["User request"] --> R{"Router"}
+    C[("Tool catalog<br/>from live MCP servers")] --> R
+    R -->|ranked tools + probabilities| S["Scorer"]
+    R -->|or: no tool fits| S
+    G[("Golden labels<br/>right · acceptable · no-tool")] --> S
+    S --> REP["report.md<br/>accuracy · abstention · latency · cost · calibration"]
+```
+
+## ✨ Highlights
+
+- **Decision models vs LLM agents vs baselines.** TypeSafe **Jev** and the **OpenAI
+  Decisions API** return calibrated probabilities; **Strands Agents** (Bedrock, Anthropic,
+  OpenAI or open-weight models on **Hugging Face**) picks tools the way a real agent does;
+  **BM25** and **embeddings** set the free floor.
+- **Real catalogs.** 31 tools pulled live from 10 public, no-auth MCP servers, with
+  authenticated servers (GitHub, Microsoft 365) ready to switch on.
+- **Judged golden sets.** 696 unique questions over 31 tools from 10 servers (616 written by
+  9 models from two vendors and judged by two cross-vendor judges, plus 80 unreviewed no-tool
+  questions), run as three suites with different catalogs. About 20% are **no-tool**
+  questions where the right move is to call nothing, and a frozen 30% test split is held out.
+- **More than accuracy.** Strict and lenient top-1, top-3, right-server rate, abstention,
+  p50/p95 latency, tokens, $/1k questions, ECE and Brier calibration.
+- **Fair by construction.** Every router sees the identical, seeded catalog for each
+  question. Routers without credentials are skipped, never scored as failures.
+
+## 🤖 Routers
+
+| Router | `type` | Modes | What it measures |
+|---|---|---|---|
+| **Decision models on OpenRouter** | `openrouter` | `flat` · `factored` · `hierarchical` | One `OPENROUTER_API_KEY` for `typesafe/jev-1.13` (or `~typesafe/jev-latest`) and `openai/gpt-6-luna-decisions` via `POST /api/alpha/decisions`. Cost is measured from `usage.cost`. |
+| **TypeSafe Jev** | `jev` | `flat` · `factored` · `hierarchical` | A System One decision model: one `choice` over tools, calibrated probabilities, input-only billing. Native API or any `/v1/decisions` gateway (Bifrost, NanoGPT). |
+| **OpenAI Decisions API** | `openai_decisions` | `flat` · `factored` · `hierarchical` | `POST /v1/decisions` on `gpt-6-luna` (public beta): typed choice answers with probabilities and confidence. |
+| **Strands Agents** | `strands` | `native` · `structured` | An LLM agent with every tool registered as a stub carrying its real MCP schema; records the first tool it calls. Providers: `bedrock`, `anthropic`, `openai`, `huggingface`, `litellm`. |
+| **BM25** | `bm25` | | Pure-Python lexical baseline, zero cost. |
+| **Embeddings** | `embedding` | | Local `bge-small-en-v1.5` via fastembed, no key. |
+
+The two decision APIs share one router, so they run the same three strategies:
+
+| Mode | Requests | How |
+|---|---:|---|
+| `flat` | 1 | One choice over every tool (tournament above 255 options). |
+| `factored` | 1 | A "which server?" question plus a "which tool on server S?" question per server in **one** request, combined as P(server) × P(tool \| server). |
+| `hierarchical` | 2 | Pick servers, then choose among their tools. |
+
+All three add a **"none of these tools"** option, so a decision router can abstain. Any other
+router can abstain below a score threshold (`abstain_threshold`).
+
+### Decision models compared
+
+| Model | OpenRouter id | Input $/1M | Output | Context |
+|---|---|---:|---|---:|
+| TypeSafe Jev | `typesafe/jev-1.13` (pinned) · `~typesafe/jev-latest` | $0.042 | free | 32K |
+| GPT-6 Luna Decisions | `openai/gpt-6-luna-decisions` | $0.10 | free | 1.1M |
+
+Both take TypeSafe's native schema (`model`, `state`, `questions` with `choice` criteria) on
+OpenRouter, so they run through the same router and modes. The direct TypeSafe and OpenAI
+APIs (`jev`, `openai_decisions`) stay available.
+
+## 📚 Datasets
+
+| Suite | Questions | No-tool | Catalog per question | Purpose |
+|---|---:|---:|---|---|
+| `one_server` | 696 | 147 (21%) | tools of 1 connected server (1–5) | choosing within one server |
+| `multi_server` | 696 | 147 (21%) | tools of 4 connected servers (7–18) | same questions, cross-server confusion |
+| `multi_confused` | 405 | 81 (20%) | 9–18 tools, confusable by design | the hard subset |
+| `claude_v2` | 190 | 39 (21%) | sampled at 10 / 30 / 75 / 150 with synthetic distractors | scaling with catalog size |
+
+The three `datasets_v1` suites are **one set of 696 unique questions** shown with different
+catalogs (`multi_confused` is a subset), not 1,797 independent items; every row carries a
+shared `qid` and `data/golden/questions.jsonl` lists each question once. 616 were written by
+Claude Fable, Opus, Sonnet and Haiku plus GPT-5.5, GPT-5.6 (Sol, Luna, Terra) and GPT-6 Astra,
+about 70 each, and checked by a GPT judge and a Claude judge, who agree on 585 of 616. The
+other 80 are near-miss no-tool questions added to reach ~20% abstention; they are tagged
+`needs_human_review`. Two of the judges also wrote questions, and GPT-5.6 Luna shares a
+model line with a router under test, so the report shows accuracy with and without their
+questions. See [data/golden/README.md](data/golden/README.md) for the split, the curation
+steps and what is still open.
+
+## 📊 Baseline results
+
+Strict top-1 accuracy on questions that have a right tool, with 95% bootstrap intervals:
+
+| Router | one_server | multi_server | multi_confused |
+|---|---:|---:|---:|
+| BM25 | 71.4% (67.2–75.2) | 61.4% (57.2–65.6) | 53.7% (48.1–59.3) |
+| Embeddings (bge-small) | **74.0%** (70.1–77.4) | **65.0%** (61.0–69.0) | **62.7%** (57.4–67.9) |
+
+Neither baseline recognizes no-tool questions: both abstain on 0% of them. A score threshold
+on BM25 catches 56% in `one_server` but also wrongly abstains on 18% of answerable questions.
+These are single runs over all questions; publish numbers on the frozen test split with
+`repeats: 3` or more.
+That gap is what calibrated decision models and LLM agents are measured on. Jev, OpenAI
+Decisions and Strands results land in the same table as soon as keys are configured.
+
+## 🚀 Quick start
 
 ```bash
-uv sync --extra strands          # Python 3.12, core + Strands + dev tools
-cp .env.example .env             # add TYPESAFE_API_KEY, AWS credentials, ...
+git clone https://github.com/SarathChandraBellam/ToolDiscoveryBench
+cd ToolDiscoveryBench
+uv sync --extra strands --extra huggingface --extra embed
+cp .env.example .env        # OPENROUTER_API_KEY (Jev + Luna), HF_TOKEN, AWS creds ...
 
-uv run tdb pull                  # snapshot tools/list from configs/servers.yaml
-uv run python scripts/make_distractors.py
-uv run tdb validate              # gold labels still match live tool names?
-uv run tdb run --limit 5         # smoke test
-uv run tdb run                   # full run -> runs/<timestamp>/report.md
+uv run tdb validate                         # golden labels match live tool names?
+uv run tdb run --limit 20                   # smoke test, every configured router
+uv run tdb run                              # full run -> runs/<timestamp>/report.md
+uv run tdb run --split test                 # only the frozen held-out test split (or `split: test` in the config)
+uv run tdb run --split test --repeats 3     # publishable numbers
+uv run tdb run --routers or-jev-factored,or-luna-factored,embed-bge-small,bm25   # Jev vs Luna
 uv run tdb ask "Is AgentCore available in Mumbai?" --router jev-factored
 ```
 
-Routers whose keys, credentials or SDKs are missing are skipped with a message, not scored
-as failures.
-
-## What a run measures
-
-Each question is shown to every router with its gold tool(s) plus seeded distractors at
-catalog sizes 10, 30, 75 and 150. Same-server tools are added first because they are the
-hardest negatives, and every router sees the identical catalog.
-
-| | |
+| Command | Does |
 |---|---|
-| Accuracy | top-1, top-3, MRR, right-server rate, top-1 by question tag |
-| Speed | p50 / p95 latency per question, upstream calls per question |
-| Cost | input tokens, USD per 1k questions |
-| Calibration (Jev) | ECE, Brier, mean confidence when right vs wrong |
+| `tdb pull` | Snapshot `tools/list` from every server in `configs/servers.yaml`. |
+| `tdb validate` | Check every suite's labels and catalogs against the snapshot. |
+| `tdb run` | Run suites × routers × catalog sizes; write `results.jsonl`, `summary.csv`, `report.md`. |
+| `tdb report RUN_DIR` | Re-render a report. |
+| `tdb ask "…"` | Route one question and print the ranking. |
 
-Details: [docs/metrics.md](docs/metrics.md).
+## 🧮 How scoring works
 
-## Routers
-
-| Router | Modes |
+| Metric | Definition |
 |---|---|
-| `jev` | `flat` (one choice, tournament above 255 tools), `factored` (server × tool in one request), `hierarchical` (server call, then tool call). Native TypeSafe API or any `/v1/decisions` gateway. |
-| `strands` | `native` (stub tools with real MCP schemas, first tool call recorded), `structured` (pydantic pick). Bedrock, Anthropic, OpenAI or LiteLLM. |
-| `bm25` | Pure Python, case-splitting tokeniser |
-| `embedding` | fastembed `bge-small-en-v1.5`, local |
+| **accuracy** | Answerable: the gold tool is picked first. No-tool: the router abstains. |
+| **top-1** / **lenient** | Strict top-1 on answerable questions; lenient also accepts tools judged *acceptable*. |
+| **top-3**, **MRR**, **server@1** | Shortlist quality, and whether at least the right server was chosen. |
+| **abstain ✓** / **false abstain** | Abstention on no-tool questions vs on answerable ones. |
+| **p50 / p95 ms**, **calls**, **$/1k q** | Wall-clock per question, upstream calls, cost from configured prices. |
+| **ECE**, **Brier**, **conf ✓ / ✗** | Calibration of the top-1 probability (decision models). |
 
-Details and how to add your own: [docs/routers.md](docs/routers.md).
+Reports also break accuracy down by tag (`confusable`, `judges_split`, `no_tool`, …) and by
+which vendor's model wrote the question. Full definitions: [docs/metrics.md](docs/metrics.md).
 
-## Catalog and golden set
-
-- 10 no-auth public MCP servers, 31 real tools: DeepWiki, Context7, AWS Knowledge,
-  Microsoft Learn, Hugging Face, Cloudflare Docs, GitMCP, Astro, Svelte, Kiwi.
-- GitHub and a Microsoft 365 server are configured and switch on with tokens.
-- 110 synthetic `syn-*` distractor tools let catalogs grow to 150.
-- 50 questions covering every real tool, tagged by difficulty.
-
-Details: [docs/golden-set.md](docs/golden-set.md).
-
-## First baseline (BM25)
-
-| Catalog size | 10 | 30 | 75 | 150 |
-|---|---:|---:|---:|---:|
-| top-1 | 70% | 64% | 46% | 46% |
-
-This is the floor model-backed routers need to beat.
-
-## Project layout
+## 🗂️ Project layout
 
 ```
-configs/      servers.yaml (MCP servers), bench.yaml (routers, sizes)
-data/         catalog/ (pulled + synthetic), golden/ (questions)
-docs/         architecture, routers, metrics, golden set, development
-scripts/      make_distractors.py
+configs/          servers.yaml (MCP servers) · bench.yaml (suites, routers)
+data/
+  catalog/        pulled tool catalog + synthetic distractors
+  golden/         datasets_v1/ · claude/ · shared/ (labelling inputs) · cross/ · openai/
+  raw/            source datasets, unchanged
+docs/             architecture · routers · metrics · golden set · development
+scripts/          import_datasets.py · make_distractors.py · labeling/
 src/tooldiscoverybench/
-  core/ mcp/ catalog/ golden/ routers/ evaluation/ cli.py
-tests/unit/
+  core/           data types, config
+  mcp/            Streamable-HTTP client (initialize, tools/list, tools/call)
+  catalog/        pull · store · per-question sampling
+  golden/         load + validate
+  routers/
+    decisions/    shared decision router (modes, abstention), types, HTTP
+    jev/          TypeSafe client + router
+    openai_decisions/  OpenAI Decisions client + router
+    strands/      provider factory (incl. Hugging Face) + router
+    baselines/    bm25 · embedding
+  evaluation/     runner · metrics · report
+tests/unit/       offline tests: fake HTTP transports and scripted Strands models
 ```
 
-Architecture: [docs/architecture.md](docs/architecture.md) · Development: [docs/development.md](docs/development.md)
-
-## Development
+## 🛠️ Development
 
 ```bash
 uv run black src tests scripts
 uv run ruff check src tests scripts
-uv run mypy
-uv run pytest
+uv run mypy                 # strict
+uv run pytest               # fully offline
 ```
 
-## License
+To add a router, subclass `Router`, implement `route()`, and register it. To add a decision
+API, implement a small client with `ask()` and subclass `DecisionRouter`. You get all three
+modes and abstention for free. See [docs/routers.md](docs/routers.md).
 
-MIT
+## 🧭 Why this exists
+
+The project's motivation, hypotheses and scope are in [intent.md](intent.md).
+
+## 📄 License
+
+MIT © Sarath Chandra Bellam

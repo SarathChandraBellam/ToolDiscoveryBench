@@ -20,8 +20,9 @@ Script = Callable[[list[dict[str, Any]], int], tuple[str | None, dict[str, Any]]
 class ScriptedModel(strands_model.Model):  # type: ignore[misc]
     """Minimal Strands model that streams whatever the script decides."""
 
-    def __init__(self, script: Script) -> None:
+    def __init__(self, script: Script, text: str = "done") -> None:
         self.script = script
+        self.text = text
         self.config: dict[str, Any] = {}
         self.calls = 0
 
@@ -45,7 +46,7 @@ class ScriptedModel(strands_model.Model):  # type: ignore[misc]
         name, args = self.script(tool_specs or [], self.calls)
         yield {"messageStart": {"role": "assistant"}}
         if name is None:
-            yield {"contentBlockDelta": {"delta": {"text": "done"}}}
+            yield {"contentBlockDelta": {"delta": {"text": self.text}}}
             yield {"contentBlockStop": {}}
             yield {"messageStop": {"stopReason": "end_turn"}}
         else:
@@ -97,3 +98,72 @@ async def test_structured_output_drops_unknown_ids(
     assert res.error is None, res.error
     assert [t for t, _ in res.ranked] == ["kiwi.search-flight", "aws.search_docs"]
     assert res.ranked[0][1] == pytest.approx(0.7)
+
+
+def test_huggingface_provider_uses_hf_router(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("openai")
+    from tooldiscoverybench.routers.strands.models import (
+        HF_ROUTER_URL,
+        build_model,
+        provider_unavailable_reason,
+    )
+
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    assert provider_unavailable_reason({"provider": "huggingface"}) == "HF_TOKEN not set"
+    monkeypatch.setenv("HF_TOKEN", "hf_test")
+    assert provider_unavailable_reason({"provider": "huggingface"}) is None
+
+    model = build_model({"provider": "huggingface", "model_id": "Qwen/Qwen3-32B"})
+    assert model.get_config()["model_id"] == "Qwen/Qwen3-32B"
+    assert str(model.client_args["base_url"]) == HF_ROUTER_URL
+    assert model.client_args["api_key"] == "hf_test"
+
+
+def native(model: Any) -> Any:
+    return build_router(
+        {"name": "s", "type": "strands", "mode": "native", "_model_factory": lambda: model}
+    )
+
+
+async def test_native_abstains_only_on_explicit_no_tool(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    said_no_tool = await native(ScriptedModel(lambda s, n: (None, {}), "NO_TOOL")).route(
+        "cancel my hotel", tools, server_desc
+    )
+    assert said_no_tool.abstained and said_no_tool.top1 is None
+
+    chatted = await native(ScriptedModel(lambda s, n: (None, {}), "Sure, here you go")).route(
+        "cancel my hotel", tools, server_desc
+    )
+    assert not chatted.abstained and chatted.top1 is None
+
+
+async def test_native_unknown_tool_is_a_miss_not_an_abstention(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    model = ScriptedModel(lambda s, n: ("made_up_tool", {}) if n == 1 else (None, {}))
+    res = await native(model).route("q", tools, server_desc)
+    assert not res.abstained and res.top1 is None
+    assert res.raw is not None and res.raw.get("unknown_tool")
+
+
+async def test_structured_invalid_first_pick_is_not_promoted(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    def pick(specs: list[dict[str, Any]], _: int) -> tuple[str | None, dict[str, Any]]:
+        name = specs[0]["name"] if specs else "ToolPick"
+        return name, {"tool_id": "bogus.x", "alternatives": ["aws.search_docs"], "confidence": 0.6}
+
+    router = build_router(
+        {
+            "name": "s",
+            "type": "strands",
+            "mode": "structured",
+            "_model_factory": lambda: ScriptedModel(pick),
+        }
+    )
+    res = await router.route("aws docs", tools, server_desc)
+    assert res.error is None, res.error
+    assert res.top1 == "bogus.x" and not res.abstained
+    assert [t for t, _ in res.ranked] == ["bogus.x", "aws.search_docs"]

@@ -14,6 +14,7 @@ import asyncio
 import json
 import sys
 from collections.abc import Callable, Sequence
+from typing import Any
 
 from tooldiscoverybench.core.config import load_dotenv, load_yaml
 
@@ -37,11 +38,29 @@ def build_parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="run the benchmark")
     run.add_argument("--config", default="configs/bench.yaml")
     run.add_argument("--routers", default=None, help="comma-separated router names")
-    run.add_argument("--limit", type=int, default=None, help="first N questions only")
+    run.add_argument("--suites", default=None, help="comma-separated suite names")
+    run.add_argument("--limit", type=int, default=None, help="first N questions per suite")
+    run.add_argument(
+        "--repeats",
+        type=int,
+        default=None,
+        help="repeats per question (overrides the config; publish with >= 3)",
+    )
+    run.add_argument(
+        "--split",
+        default=None,
+        help="only questions tagged split:<name>, e.g. 'test' for the frozen held-out set",
+    )
     run.add_argument("--out", default=None)
 
     report = sub.add_parser("report", help="re-render report.md for a run directory")
     report.add_argument("run_dir")
+    report.add_argument(
+        "--exclude-generators",
+        default=None,
+        help="comma-separated question authors to drop in the contamination table "
+        "(default: the judges gpt-5.6-sol, claude-opus-5-5 and gpt-5.6-luna; '' for none)",
+    )
 
     ask = sub.add_parser("ask", help="route one question and print the ranking")
     ask.add_argument("question")
@@ -62,26 +81,40 @@ def cmd_pull(args: argparse.Namespace) -> None:
 
 def cmd_validate(args: argparse.Namespace) -> None:
     from tooldiscoverybench.catalog import load_catalog
-    from tooldiscoverybench.evaluation.runner import catalog_paths
+    from tooldiscoverybench.evaluation.runner import catalog_paths, suite_specs
     from tooldiscoverybench.golden import load_golden, validate_golden
 
     cfg = load_yaml(args.config)
     tools, _ = load_catalog(*catalog_paths(cfg))
-    items = load_golden(cfg["golden"])
     real_ids = {t.id for t in tools if not t.synthetic}
-    used = {g for it in items for g in it.gold}
-    print(
-        f"{len(items)} questions, {len(tools)} tools; "
-        f"gold covers {len(used & real_ids)}/{len(real_ids)} real tools"
-    )
-    uncovered = sorted(real_ids - used)
-    if uncovered:
-        print("real tools with no question yet:", ", ".join(uncovered))
-    problems = validate_golden(items, tools)
-    if problems:
-        print("PROBLEMS:\n  " + "\n  ".join(problems))
+    failed = False
+    for spec in suite_specs(cfg):
+        items = load_golden(spec["golden"])
+        used = {g for it in items for g in it.gold}
+        no_tool = sum(it.expects_abstain for it in items)
+        fixed = sum(it.candidates is not None for it in items)
+        print(
+            f"[{spec['name']}] {len(items)} questions ({no_tool} no-tool, {fixed} fixed-catalog); "
+            f"gold covers {len(used & real_ids)}/{len(real_ids)} real tools"
+        )
+        uncovered = sorted(real_ids - used)
+        if uncovered:
+            print("  real tools with no question:", ", ".join(uncovered))
+        problems = validate_golden(items, tools)
+        if problems:
+            failed = True
+            print("  PROBLEMS:\n    " + "\n    ".join(problems[:30]))
+    if failed:
         sys.exit(1)
     print("OK")
+
+
+def _with_repeats(cfg: dict[str, Any], repeats: int | None) -> dict[str, Any]:
+    if repeats is None:
+        return cfg
+    if repeats < 1:
+        raise SystemExit("--repeats must be >= 1")
+    return {**cfg, "repeats": repeats}
 
 
 def cmd_run(args: argparse.Namespace) -> None:
@@ -89,16 +122,26 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     out = asyncio.run(
         run_bench(
-            load_yaml(args.config), args.out, only_routers=_split(args.routers), limit=args.limit
+            _with_repeats(load_yaml(args.config), args.repeats),
+            args.out,
+            only_routers=_split(args.routers),
+            limit=args.limit,
+            only_suites=_split(args.suites),
+            split=args.split,
         )
     )
     print(f"\nreport: {out / 'report.md'}")
 
 
 def cmd_report(args: argparse.Namespace) -> None:
-    from tooldiscoverybench.evaluation.report import write_report
+    from tooldiscoverybench.evaluation.report import DEFAULT_EXCLUDE_GENERATORS, write_report
 
-    print(write_report(args.run_dir))
+    exclude = (
+        DEFAULT_EXCLUDE_GENERATORS
+        if args.exclude_generators is None
+        else tuple(g.strip() for g in args.exclude_generators.split(",") if g.strip())
+    )
+    print(write_report(args.run_dir, exclude))
 
 
 async def _ask(args: argparse.Namespace) -> None:
@@ -112,7 +155,13 @@ async def _ask(args: argparse.Namespace) -> None:
     router_cfg = next((r for r in cfg["routers"] if r["name"] == args.router), None)
     if router_cfg is None:
         sys.exit(f"no router named {args.router!r} in {args.config}")
-    router = build_router(router_cfg)
+    router = build_router(
+        {
+            k: v
+            for k, v in router_cfg.items()
+            if k not in ("concurrency", "usd_per_m_input", "abstain_threshold")
+        }
+    )
     reason = router.unavailable_reason()
     if reason:
         sys.exit(f"{router.name} unavailable: {reason}")
@@ -129,6 +178,7 @@ async def _ask(args: argparse.Namespace) -> None:
                 "calls": res.calls,
                 "input_tokens": res.input_tokens,
                 "error": res.error,
+                "abstained": res.abstained,
                 "top5": [(tid, round(p, 4)) for tid, p in res.ranked[:5]],
             },
             indent=2,

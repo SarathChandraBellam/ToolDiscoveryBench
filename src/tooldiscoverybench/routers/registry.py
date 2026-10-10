@@ -11,6 +11,8 @@ _REGISTRY: dict[str, str] = {
     "bm25": "tooldiscoverybench.routers.baselines.bm25:BM25Router",
     "embedding": "tooldiscoverybench.routers.baselines.embedding:EmbeddingRouter",
     "jev": "tooldiscoverybench.routers.jev.router:JevRouter",
+    "openrouter": "tooldiscoverybench.routers.jev.router:OpenRouterDecisionsRouter",
+    "openai_decisions": "tooldiscoverybench.routers.openai_decisions.router:OpenAIDecisionsRouter",
     "strands": "tooldiscoverybench.routers.strands.router:StrandsRouter",
 }
 

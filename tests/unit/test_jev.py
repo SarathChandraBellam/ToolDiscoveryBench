@@ -65,7 +65,7 @@ async def test_flat_payload_and_parse(tools: list[Tool], server_desc: dict[str, 
     question = req["body"]["questions"]["tool"]
     assert req["body"]["model"] == "jev-latest"
     assert question["type"] == "choice"
-    assert set(question["criteria"]) == {t.id for t in tools}
+    assert set(question["criteria"]) == {t.id for t in tools} | {"__none__"}
     assert res.input_tokens == 123 and res.calls == 1
 
 
@@ -79,7 +79,9 @@ async def test_factored_is_one_request_with_joint_probs(
     questions = cap[0]["body"]["questions"]
     assert "server" in questions and len(questions) == 2  # server + the 2-tool aws server
     probs = dict(res.ranked)
-    assert sum(probs.values()) == pytest.approx(1.0)
+    assert res.raw is not None
+    assert sum(probs.values()) + res.raw["p_none"] == pytest.approx(1.0)
+    assert "__none__" in questions["server"]["criteria"]
     assert res.top1 == "aws.search_docs"
     assert probs["aws.search_docs"] == pytest.approx(0.9 * 0.9)
 
@@ -132,3 +134,211 @@ def test_missing_key_marks_router_unavailable(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
     router = build_router({"name": "j", "type": "jev"})
     assert router.unavailable_reason() == "TYPESAFE_API_KEY not set"
+
+
+async def test_abstains_when_none_option_wins(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        criteria = body["questions"]["tool"]["criteria"]
+        assert "__none__" in criteria
+        probs = {k: (0.7 if k == "__none__" else 0.3 / (len(criteria) - 1)) for k in criteria}
+        return httpx.Response(
+            200, json={"answers": {"tool": {"probabilities": probs}}, "usage": {"input_tokens": 5}}
+        )
+
+    router = build_router(
+        {"name": "j", "type": "jev", "api_key": "k", "_transport": httpx.MockTransport(handler)}
+    )
+    res = await router.route("cancel my hotel booking", tools, server_desc)
+    assert res.abstained and res.top1 is None
+    assert res.raw is not None and res.raw["p_none"] == pytest.approx(0.7)
+    assert "__none__" not in dict(res.ranked)
+
+
+async def test_abstain_can_be_disabled(tools: list[Tool], server_desc: dict[str, str]) -> None:
+    cap: list[dict[str, Any]] = []
+    res = await jev(cap, mode="flat", allow_abstain=False).route("q", tools, server_desc)
+    assert "__none__" not in cap[0]["body"]["questions"]["tool"]["criteria"]
+    assert not res.abstained
+
+
+async def test_openrouter_dialect_and_measured_cost(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    cap: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        cap.append(
+            {"url": str(request.url), "body": body, "auth": request.headers["authorization"]}
+        )
+        opts = list(body["questions"]["tool"]["criteria"])
+        probs = {o: (0.9 if o == "aws.search_docs" else 0.1 / (len(opts) - 1)) for o in opts}
+        return httpx.Response(
+            200,
+            json={
+                "model": "typesafe/jev-1.13-20260901",
+                "answers": {
+                    "tool": {
+                        "type": "choice",
+                        "choice": "aws.search_docs",
+                        "probabilities": probs,
+                        "confidence": 0.8,
+                    }
+                },
+                "usage": {"input_tokens": 400, "output_tokens": 0, "cost": 0.0000168},
+            },
+        )
+
+    router = build_router(
+        {
+            "name": "or",
+            "type": "openrouter",
+            "model": "openai/gpt-6-luna-decisions",
+            "api_key": "or-key",
+            "_transport": httpx.MockTransport(handler),
+        }
+    )
+    res = await router.route("aws docs", tools, server_desc)
+    assert cap[0]["url"] == "https://openrouter.ai/api/alpha/decisions"
+    assert cap[0]["auth"] == "Bearer or-key"
+    assert cap[0]["body"]["model"] == "openai/gpt-6-luna-decisions"  # sent verbatim
+    assert cap[0]["body"]["questions"]["tool"]["type"] == "choice"
+    assert res.top1 == "aws.search_docs"
+    assert res.cost_usd == pytest.approx(0.0000168) and res.input_tokens == 400
+
+
+def test_openrouter_needs_its_own_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    router = build_router({"name": "or", "type": "openrouter", "model": "typesafe/jev-1.13"})
+    assert router.unavailable_reason() == "OPENROUTER_API_KEY not set"
+
+
+def test_list_shaped_answers_are_normalised() -> None:
+    from tooldiscoverybench.routers.jev.client import normalise_answers
+
+    out = normalise_answers(
+        [
+            {
+                "type": "choice",
+                "name": "tool",
+                "choice": "a",
+                "probabilities": [
+                    {"value": "a", "probability": 0.7},
+                    {"value": "b", "probability": 0.3},
+                ],
+            }
+        ]
+    )
+    assert out["tool"]["probabilities"] == {"a": 0.7, "b": 0.3}
+
+
+def scripted(server: dict[str, float], tool: dict[str, float] | None = None) -> httpx.MockTransport:
+    """Fixed server-question probabilities; tool questions get ``tool`` or a uniform spread."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        answers = {}
+        for qname, question in body["questions"].items():
+            opts = list(question["criteria"])
+            if qname == "server":
+                probs = {o: server.get(o, 0.0) for o in opts}
+            elif tool:
+                probs = {o: tool.get(o, 0.0) for o in opts}
+            else:
+                probs = {o: 1 / len(opts) for o in opts}
+            answers[qname] = {"probabilities": probs}
+        usage = {"input_tokens": 1, "cost": 0.001}
+        return httpx.Response(200, json={"answers": answers, "usage": usage})
+
+    return httpx.MockTransport(handler)
+
+
+def jev_with(transport: httpx.MockTransport, **cfg: Any) -> Any:
+    return build_router(
+        {"name": "j", "type": "jev", "api_key": "k", "_transport": transport, **cfg}
+    )
+
+
+async def test_factored_abstain_compares_none_with_best_server(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    # aws 0.5 beats NONE 0.3, but the joint P(aws) * P(tool | aws) = 0.25 is below 0.3
+    t = scripted({"aws": 0.5, "ms": 0.1, "kiwi": 0.1, "__none__": 0.3})
+    res = await jev_with(t, mode="factored").route("aws docs", tools, server_desc)
+    assert not res.abstained
+    assert res.top1 in {"aws.search_docs", "aws.list_regions"}
+
+
+async def test_hierarchical_abstain_compares_none_with_best_server(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    # NONE wins the server question; a confident second-stage tool pick must not override it
+    t = scripted(
+        {"aws": 0.3, "ms": 0.1, "kiwi": 0.1, "__none__": 0.5},
+        {"aws.search_docs": 0.9, "aws.list_regions": 0.1},
+    )
+    res = await jev_with(t, mode="hierarchical", top_servers=1).route("q", tools, server_desc)
+    assert res.abstained and res.top1 is None
+
+
+async def test_hierarchical_single_candidate_keeps_pruned_tools(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    t = scripted({"kiwi": 0.8, "aws": 0.1, "ms": 0.05, "__none__": 0.05})
+    res = await jev_with(t, mode="hierarchical", top_servers=1).route("flights", tools, server_desc)
+    assert res.top1 == "kiwi.search-flight" and res.calls == 1
+    assert {tid for tid, _ in res.ranked} == {tool.id for tool in tools}
+
+
+async def test_flat_tournament_counts_cost_of_every_round() -> None:
+    many = [Tool(f"s{i // 50}", f"t{i}", "x") for i in range(600)]
+    res = await jev_with(scripted({}), mode="flat").route("q", many, {})
+    assert res.calls == 4
+    assert res.cost_usd == pytest.approx(0.004)
+
+
+async def test_factored_refused_subquestion_scores_zero_not_error(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    sent: list[set[str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        names = set(body["questions"])
+        sent.append(names)
+        if "tool_0" in names:  # the aws sub-question
+            return httpx.Response(502, text="OpenAI refused to answer question tool_0")
+        answers = {
+            "server": {"probabilities": {"aws": 0.6, "ms": 0.2, "kiwi": 0.1, "__none__": 0.1}}
+        }
+        return httpx.Response(200, json={"answers": answers, "usage": {"input_tokens": 1}})
+
+    router = jev_with(httpx.MockTransport(handler), mode="factored")
+    res = await router.route("q", tools, server_desc)
+    assert res.error is None, res.error
+    assert len(sent) == 2 and "tool_0" not in sent[1]
+    probs = dict(res.ranked)
+    assert probs["aws.search_docs"] == 0.0 and probs["aws.list_regions"] == 0.0
+    assert res.top1 == "ms.docs_search"
+    assert res.raw is not None and res.raw["refused"] == ["tool_0"]
+
+
+async def test_factored_other_errors_still_fail_the_row(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    transport = httpx.MockTransport(lambda _: httpx.Response(500, text="boom on tool_0"))
+    res = await jev_with(transport, mode="factored").route("q", tools, server_desc)
+    assert res.error is not None and "500" in res.error
+
+
+async def test_factored_subquestion_does_not_assume_the_server_fits(
+    tools: list[Tool], server_desc: dict[str, str]
+) -> None:
+    cap: list[dict[str, Any]] = []
+    await jev(cap, mode="factored").route("q", tools, server_desc)
+    instr = cap[0]["body"]["questions"]["tool_0"]["instructions"]
+    assert "pick the closest one even if none fits well" in instr
+    assert "Assume the agent will use" not in instr

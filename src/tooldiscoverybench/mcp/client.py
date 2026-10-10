@@ -88,23 +88,34 @@ class MCPHttpClient:
         body = {"jsonrpc": "2.0", "method": method}
         client.post(self.url, json=body, headers=self._headers())
 
+    def _initialize(self, client: httpx.Client) -> None:
+        t0 = time.perf_counter()
+        init = self._rpc(
+            client,
+            "initialize",
+            {
+                "protocolVersion": PROTOCOL_VERSION,
+                "capabilities": {},
+                "clientInfo": {"name": "tooldiscoverybench", "version": "0.1.0"},
+            },
+        )
+        self.timings_ms["initialize"] = (time.perf_counter() - t0) * 1000
+        self.server_info = init.get("serverInfo", {})
+        self.instructions = init.get("instructions")
+        self._notify(client, "notifications/initialized")
+
+    def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Run one ``tools/call``. Returns the raw MCP result (``content``, ``isError``)."""
+        with httpx.Client(timeout=self.timeout, follow_redirects=True) as client:
+            self._initialize(client)
+            t0 = time.perf_counter()
+            result = self._rpc(client, "tools/call", {"name": name, "arguments": arguments})
+            self.timings_ms["tools_call"] = (time.perf_counter() - t0) * 1000
+            return result
+
     def list_tools(self) -> list[dict[str, Any]]:
         with httpx.Client(timeout=self.timeout, follow_redirects=True) as client:
-            t0 = time.perf_counter()
-            init = self._rpc(
-                client,
-                "initialize",
-                {
-                    "protocolVersion": PROTOCOL_VERSION,
-                    "capabilities": {},
-                    "clientInfo": {"name": "tooldiscoverybench", "version": "0.1.0"},
-                },
-            )
-            self.timings_ms["initialize"] = (time.perf_counter() - t0) * 1000
-            self.server_info = init.get("serverInfo", {})
-            self.instructions = init.get("instructions")
-            self._notify(client, "notifications/initialized")
-
+            self._initialize(client)
             tools: list[dict[str, Any]] = []
             cursor: str | None = None
             t1 = time.perf_counter()
