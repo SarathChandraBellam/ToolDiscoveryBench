@@ -185,7 +185,7 @@ routers:
   # tuned on the dev split only (scripts/escalation_curve.py), never on split:test.
   - name: escalate-jev-sonnet
     type: escalate
-    escalate_below: ${TDB_ESCALATE_BELOW:-0.8}
+    escalate_below: ${TDB_ESCALATE_BELOW:-0.85}    # dev: 93.0% acc, 24.1% escalated (curve in PR #4)
     concurrency: 4
     primary:
       type: openrouter
@@ -206,7 +206,7 @@ routers:
   # Shortlist: bge-small keeps the top k tools, Jev flat chooses among them (NONE kept).
   - name: shortlist-bge-jev
     type: shortlist
-    k: ${TDB_SHORTLIST_K:-10}           # dev recall@10 (bge): 98.4% multi_server, 97.3% multi_confused
+    k: ${TDB_SHORTLIST_K:-10}           # dev: recall@10 98.4% / 97.3%; acc ties k=12 on multi_confused, cheaper
     concurrency: 4
     retriever:
       type: embedding
