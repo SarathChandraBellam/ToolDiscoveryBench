@@ -57,6 +57,14 @@ routers:
     concurrency: 4
     usd_per_m_input: 0.042
 
+  - name: or-jev-factored-fitq         # factored + separate "does any tool fit?" question
+    type: openrouter
+    model: typesafe/jev-1.13
+    mode: factored
+    abstain_question: true
+    concurrency: 4
+    usd_per_m_input: 0.042
+
   - name: or-luna-flat
     type: openrouter
     model: openai/gpt-6-luna-decisions
@@ -68,6 +76,14 @@ routers:
     type: openrouter
     model: openai/gpt-6-luna-decisions
     mode: factored
+    concurrency: 4
+    usd_per_m_input: 0.10
+
+  - name: or-luna-factored-fitq
+    type: openrouter
+    model: openai/gpt-6-luna-decisions
+    mode: factored
+    abstain_question: true
     concurrency: 4
     usd_per_m_input: 0.10
 

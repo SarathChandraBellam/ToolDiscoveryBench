@@ -13,7 +13,9 @@ Modes
                   servers' tools.
 
 Abstention (``allow_abstain``, default on): a ``NONE`` option ("no listed tool can handle
-this") is added to the top-level question. When it wins, the router abstains. Its
+this") is added to the top-level question. In ``factored`` mode, ``abstain_question: true``
+instead asks a separate yes/no "does any listed tool fit?" question in the same request, and
+the router abstains when "no" wins; the server question then has no NONE option. When it wins, the router abstains. Its
 probability is reported as ``raw["p_none"]``. NONE is compared only against options of the
 same question: the best tool in ``flat`` mode, the best server in ``factored`` and
 ``hierarchical`` mode (a joint P(server) * P(tool | server) is not on the same scale).
@@ -60,6 +62,17 @@ FACTORED_TOOL_HINT = (
 )
 _TOOL_Q = re.compile(r"\btool_\d+\b")
 
+FIT_YES = "yes"
+FIT_NO = "no"
+FIT_INSTRUCTIONS = (
+    "The state is a user's request to an AI agent. The agent has exactly these tool servers "
+    "and tools:\n{catalog}\nCan any of these tools make progress on the request?"
+)
+FIT_CRITERIA = {
+    FIT_YES: "Yes: at least one listed tool can directly make progress on this request.",
+    FIT_NO: NONE_TOOL_TEXT,
+}
+
 SERVER_INSTRUCTIONS = (
     "The state is a user's request to an AI agent. Pick the tool server (integration) the "
     "agent should use first for this request."
@@ -97,6 +110,8 @@ class DecisionRouter(Router):
         self.top_servers = int(cfg.get("top_servers", 2))
         self.chunk_keep = int(cfg.get("chunk_keep", 5))
         self.allow_abstain = bool(cfg.get("allow_abstain", True))
+        # factored only: ask "does any tool fit?" as its own question instead of a NONE server
+        self.abstain_question = bool(cfg.get("abstain_question", False))
         self.client: DecisionClient = self.build_client(cfg)
 
     def build_client(self, cfg: dict[str, Any]) -> DecisionClient:
@@ -123,6 +138,16 @@ class DecisionRouter(Router):
         if with_none:
             criteria[NONE] = NONE_TOOL_TEXT
         return ChoiceQuestion(f"{self.instructions}{extra}", criteria)
+
+    def _fit_question(
+        self, by_server: dict[str, list[Tool]], server_desc: dict[str, str]
+    ) -> ChoiceQuestion:
+        lines = []
+        for server, server_tools in by_server.items():
+            desc = server_desc.get(server, "")
+            lines.append(f"- {server}: {desc}".rstrip(": "))
+            lines += [f"  - {t.name}: {t.short_desc(self.desc_chars)}" for t in server_tools]
+        return ChoiceQuestion(FIT_INSTRUCTIONS.format(catalog="\n".join(lines)), dict(FIT_CRITERIA))
 
     @staticmethod
     def _server_question(
@@ -207,10 +232,13 @@ class DecisionRouter(Router):
         for t in tools:
             by_server[t.server].append(t)
 
-        abstain = self.allow_abstain
+        separate = self.allow_abstain and self.abstain_question
+        inline_none = self.allow_abstain and not separate
         questions: dict[str, ChoiceQuestion] = {}
-        if len(by_server) > 1 or abstain:
-            questions["server"] = self._server_question(tools, server_desc, with_none=abstain)
+        if len(by_server) > 1 or inline_none:
+            questions["server"] = self._server_question(tools, server_desc, with_none=inline_none)
+        if separate:
+            questions["fit"] = self._fit_question(by_server, server_desc)
         qname_for: dict[str, str] = {}
         for i, (server, server_tools) in enumerate(by_server.items()):
             if len(server_tools) > 1:
@@ -239,7 +267,12 @@ class DecisionRouter(Router):
         raw: dict[str, Any] = {"server": resp.answers.get("server")}
         if refused:
             raw["refused"] = sorted(refused)
-        return _sorted(joint), resp.input_tokens, 1, raw, p_none, _best(p_server)
+        p_rival = _best(p_server)
+        if separate:
+            fit = resp.probabilities("fit")
+            p_none, p_rival = fit.get(FIT_NO, 0.0), fit.get(FIT_YES, 0.0)
+            raw["fit"] = fit
+        return _sorted(joint), resp.input_tokens, 1, raw, p_none, p_rival
 
     async def _ask_dropping_refusals(
         self, q: str, questions: dict[str, ChoiceQuestion]
