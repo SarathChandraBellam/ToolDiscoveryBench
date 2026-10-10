@@ -262,7 +262,7 @@ among them (the "none" option stays). Dev, 1 repeat:
   step. Its no-tool questions are the synthetic `cursor-bot` ones.
 - **Routers get an easier catalog than the harnesses did.** Claude Code and Codex chose from
   the full 31-tool catalog. In the `datasets_v1` suites, each router sees only that suite's
-  subset (1–5 tools on `one_server`, 7–18 on `multi_server` / `multi_confused`), and the subset
+  subset (1–5 tools on `one_server`, 7–18 on `multi_server`, 9–18 on `multi_confused`), and the subset
   always contains the agents' pick. The `claude_v2` sweep is the larger-catalog check: Jev
   flat top-1 is 95.5 / 93.9 / 86.4 / 82.6% at 10 / 30 / 75 / 150 tools, though its labels
   aren't harness-derived and its large catalogs are padded with synthetic distractors.
