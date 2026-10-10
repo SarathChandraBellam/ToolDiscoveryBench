@@ -14,6 +14,8 @@ _REGISTRY: dict[str, str] = {
     "openrouter": "tooldiscoverybench.routers.jev.router:OpenRouterDecisionsRouter",
     "openai_decisions": "tooldiscoverybench.routers.openai_decisions.router:OpenAIDecisionsRouter",
     "strands": "tooldiscoverybench.routers.strands.router:StrandsRouter",
+    "escalate": "tooldiscoverybench.routers.composite.escalate:EscalateRouter",
+    "shortlist": "tooldiscoverybench.routers.composite.shortlist:ShortlistRouter",
 }
 
 

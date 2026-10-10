@@ -163,6 +163,8 @@ class _Run:
             "refused": len((res.raw or {}).get("refused") or []),
             "ranked_top5": res.ranked[:5],
             **score_row(item, res),
+            # router-specific fields (e.g. escalated / primary_cost_usd for `escalate`)
+            **(res.extra or {}),
         }
         self.rows.append(row)
         self._file.write(json.dumps(row) + "\n")

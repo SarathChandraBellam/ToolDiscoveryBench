@@ -60,6 +60,8 @@ flowchart LR
 | **Strands Agents** | `strands` | `native` · `structured` | An LLM agent with every tool registered as a stub carrying its real MCP schema; records the first tool it calls. Providers: `bedrock`, `anthropic`, `openai`, `huggingface`, `litellm`. |
 | **BM25** | `bm25` | | Pure-Python lexical baseline, zero cost. |
 | **Embeddings** | `embedding` | | Local `bge-small-en-v1.5` via fastembed, no key. |
+| **Escalate (cascade)** | `escalate` | | Jev flat answers when its decision probability is ≥ `escalate_below`; otherwise a frontier LLM (Strands via OpenRouter) answers. Reports the escalation rate and both costs. Tune the threshold on dev with `scripts/escalation_curve.py`. |
+| **Shortlist** | `shortlist` | | A retriever (bge-small or BM25) keeps the top `k` tools, then Jev flat chooses among them (NONE kept). Pick `k` on dev with `scripts/shortlist_recall.py`. |
 
 The two decision APIs share one router, so they run the same three strategies:
 

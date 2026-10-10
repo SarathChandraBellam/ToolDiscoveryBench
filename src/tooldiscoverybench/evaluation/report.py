@@ -99,6 +99,57 @@ def _summary_table(summary: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
+def _escalation_table(summary: list[dict[str, Any]], rows: list[dict[str, Any]]) -> list[str]:
+    """Cascade routers: how often the fallback ran and what each stage cost."""
+    escalating = [s for s in summary if s.get("escalation_rate") is not None]
+    if not escalating:
+        return []
+    lines = [
+        "## Escalation (cascade routers)",
+        "",
+        "| router | suite | tools | escalated | primary $/1k q | fallback $/1k q | total $/1k q "
+        "| top-1 kept | top-1 escalated |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for s in escalating:
+        rs = [
+            r
+            for r in rows
+            if r["router"] == s["router"]
+            and r.get("suite", "default") == s["suite"]
+            and r["catalog_size"] == s["catalog_size"]
+            and not r["error"]
+        ]
+        n = len(rs) or 1
+        prim = sum(float(r.get("primary_cost_usd") or 0.0) for r in rs) / n * 1000
+        fall = sum(float(r.get("fallback_cost_usd") or 0.0) for r in rs) / n * 1000
+
+        def top1(sel: list[dict[str, Any]]) -> float | None:
+            ans = [r for r in sel if r.get("answerable", True)]
+            return sum(bool(r["correct@1"]) for r in ans) / len(ans) if ans else None
+
+        cells = [
+            s["router"],
+            s["suite"],
+            s["catalog_size"],
+            _fmt(s["escalation_rate"], "pct"),
+            _fmt(prim),
+            _fmt(fall),
+            _fmt(s["usd_per_1k_q"]),
+            _fmt(top1([r for r in rs if not r.get("escalated")]), "pct"),
+            _fmt(top1([r for r in rs if r.get("escalated")]), "pct"),
+        ]
+        lines.append("| " + " | ".join(str(c) for c in cells) + " |")
+    lines += [
+        "",
+        "*escalated: share of questions where the primary's decision confidence was below "
+        "`escalate_below` and the fallback answered. top-1 kept / escalated split answerable "
+        "questions by whether they escalated.*",
+        "",
+    ]
+    return lines
+
+
 def _tag_table(tags: dict[str, dict[str, float]]) -> list[str]:
     all_tags = sorted({t for per_router in tags.values() for t in per_router})
     if not all_tags:
@@ -319,6 +370,7 @@ def write_report(
 
     lines = [f"# ToolDiscoveryBench — {run.name}", ""]
     lines += _summary_table(summary)
+    lines += _escalation_table(summary, rows)
     lines += _top1_ci(rows)
     lines += _tag_table(data["by_tag"])
     lines += _by_generator(rows)
