@@ -1,0 +1,176 @@
+{
+  "catalog": [
+    "/workspace/ToolDiscoveryBench/data/catalog/public.json",
+    "/workspace/ToolDiscoveryBench/data/catalog/distractors_synthetic.json"
+  ],
+  "suites": [
+    {
+      "name": "one_server",
+      "golden": "/workspace/tdb-runs/test-split/one_server.jsonl"
+    },
+    {
+      "name": "multi_server",
+      "golden": "/workspace/tdb-runs/test-split/multi_server.jsonl"
+    },
+    {
+      "name": "multi_confused",
+      "golden": "/workspace/tdb-runs/test-split/multi_confused.jsonl"
+    }
+  ],
+  "catalog_sizes": [
+    10,
+    30,
+    75,
+    150
+  ],
+  "repeats": 3,
+  "concurrency": 4,
+  "seed": 0,
+  "warmup": true,
+  "routers": [
+    {
+      "name": "bm25",
+      "type": "bm25"
+    },
+    {
+      "name": "bm25-abstain",
+      "type": "bm25",
+      "abstain_threshold": 1.0
+    },
+    {
+      "name": "embed-bge-small",
+      "type": "embedding",
+      "enabled": true,
+      "model": "BAAI/bge-small-en-v1.5"
+    },
+    {
+      "name": "or-jev-flat",
+      "type": "openrouter",
+      "model": "typesafe/jev-1.13",
+      "mode": "flat",
+      "concurrency": 4,
+      "usd_per_m_input": 0.042
+    },
+    {
+      "name": "or-jev-factored",
+      "type": "openrouter",
+      "model": "typesafe/jev-1.13",
+      "mode": "factored",
+      "concurrency": 4,
+      "usd_per_m_input": 0.042
+    },
+    {
+      "name": "or-luna-flat",
+      "type": "openrouter",
+      "model": "openai/gpt-6-luna-decisions",
+      "mode": "flat",
+      "concurrency": 4,
+      "usd_per_m_input": 0.1
+    },
+    {
+      "name": "or-luna-factored",
+      "type": "openrouter",
+      "model": "openai/gpt-6-luna-decisions",
+      "mode": "factored",
+      "concurrency": 4,
+      "usd_per_m_input": 0.1
+    },
+    {
+      "name": "jev-flat",
+      "type": "jev",
+      "dialect": "typesafe",
+      "model": "jev-1.13",
+      "mode": "flat",
+      "desc_chars": 240,
+      "concurrency": 4,
+      "usd_per_m_input": 0.042
+    },
+    {
+      "name": "jev-factored",
+      "type": "jev",
+      "dialect": "typesafe",
+      "model": "jev-1.13",
+      "mode": "factored",
+      "usd_per_m_input": 0.042
+    },
+    {
+      "name": "jev-hier",
+      "type": "jev",
+      "dialect": "typesafe",
+      "model": "jev-1.13",
+      "mode": "hierarchical",
+      "top_servers": 2,
+      "usd_per_m_input": 0.042
+    },
+    {
+      "name": "jev-gateway",
+      "type": "jev",
+      "enabled": "false",
+      "dialect": "decisions",
+      "base_url": "http://localhost:8080",
+      "path": "/v1/decisions",
+      "question_type_key": "kind",
+      "api_key_env": "JEV_GATEWAY_KEY",
+      "model": "typesafe/jev-1.13",
+      "mode": "flat"
+    },
+    {
+      "name": "openai-decisions-flat",
+      "type": "openai_decisions",
+      "model": "gpt-6-luna",
+      "mode": "flat",
+      "desc_chars": 240,
+      "concurrency": 4,
+      "usd_per_m_input": 0.1
+    },
+    {
+      "name": "openai-decisions-factored",
+      "type": "openai_decisions",
+      "model": "gpt-6-luna",
+      "mode": "factored",
+      "usd_per_m_input": 0.1
+    },
+    {
+      "name": "strands-haiku-native",
+      "type": "strands",
+      "provider": "bedrock",
+      "model_id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+      "region": "us-east-1",
+      "mode": "native",
+      "temperature": 0,
+      "concurrency": 2,
+      "usd_per_m_input": 1.0
+    },
+    {
+      "name": "strands-haiku-structured",
+      "type": "strands",
+      "provider": "bedrock",
+      "model_id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+      "region": "us-east-1",
+      "mode": "structured",
+      "desc_chars": 300,
+      "temperature": 0,
+      "concurrency": 2,
+      "usd_per_m_input": 1.0
+    },
+    {
+      "name": "strands-hf-qwen-native",
+      "type": "strands",
+      "provider": "huggingface",
+      "model_id": "Qwen/Qwen3-32B",
+      "mode": "native",
+      "temperature": 0,
+      "concurrency": 2
+    },
+    {
+      "name": "strands-hf-qwen-structured",
+      "type": "strands",
+      "provider": "huggingface",
+      "model_id": "Qwen/Qwen3-32B",
+      "mode": "structured",
+      "desc_chars": 300,
+      "temperature": 0,
+      "concurrency": 2
+    }
+  ]
+}
