@@ -37,6 +37,10 @@ STRUCTURED_SYSTEM = (
 _ModeResult = tuple[Ranked, dict[str, Any], dict[str, Any]]
 
 
+def _price(value: Any) -> float | None:
+    return None if value in (None, "") else float(value)
+
+
 class StrandsRouter(Router):
     calibrated = False
 
@@ -44,6 +48,9 @@ class StrandsRouter(Router):
         super().__init__(**cfg)
         self.mode: str = cfg.get("mode", "native")
         self.desc_chars = int(cfg.get("desc_chars", 1024))
+        # optional token prices (USD per 1M) so LLM rows carry an input + output cost
+        self.price_in = _price(cfg.get("price_input_per_m"))
+        self.price_out = _price(cfg.get("price_output_per_m"))
         # tests inject a fake model factory
         self._model_factory: Callable[[], Any] = cfg.get("_model_factory") or (
             lambda: build_model(cfg)
@@ -69,16 +76,25 @@ class StrandsRouter(Router):
         except Exception as exc:  # noqa: BLE001 - surfaced as a scored error row
             elapsed = (time.perf_counter() - started) * 1000
             return RouteResult([], elapsed, False, error=f"{type(exc).__name__}: {exc}")
+        in_tok, out_tok = usage.get("inputTokens"), usage.get("outputTokens")
         return RouteResult(
             ranked,
             (time.perf_counter() - started) * 1000,
             False,
-            input_tokens=usage.get("inputTokens"),
-            output_tokens=usage.get("outputTokens"),
+            input_tokens=in_tok,
+            output_tokens=out_tok,
             calls=1,
             raw=raw,
             abstained=bool(raw.get("abstained")),
+            cost_usd=self._cost(in_tok, out_tok),
         )
+
+    def _cost(self, in_tok: int | None, out_tok: int | None) -> float | None:
+        if self.price_in is None and self.price_out is None:
+            return None
+        return (
+            (in_tok or 0) * (self.price_in or 0.0) + (out_tok or 0) * (self.price_out or 0.0)
+        ) / 1e6
 
     # ------------------------------------------------------------------- native
     def _native(self, question: str, tools: list[Tool]) -> _ModeResult:

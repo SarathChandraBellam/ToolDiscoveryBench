@@ -178,3 +178,56 @@ routers:
     desc_chars: 300
     temperature: 0
     concurrency: 2
+
+  # ---- Frontier LLM via OpenRouter (the measured "par" baseline) ----
+  # The Strands `huggingface` provider is an OpenAI-compatible client, so OpenRouter works
+  # with base_url + api_key_env. Cost = tokens x price_*_per_m (OpenRouter list price).
+  - name: or-sonnet-structured
+    type: strands
+    provider: huggingface
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    model_id: ${FRONTIER_MODEL_ID:-anthropic/claude-sonnet-5.5}
+    mode: structured
+    desc_chars: 300
+    temperature: 0
+    concurrency: 4
+    price_input_per_m: ${FRONTIER_USD_PER_M_IN:-2.0}
+    price_output_per_m: ${FRONTIER_USD_PER_M_OUT:-10.0}
+
+  # ---- Composite routers built on Jev flat ----
+  # Cascade: Jev flat answers when its decision probability (top tool, or NONE when it
+  # abstains) is >= escalate_below; otherwise the frontier model answers. escalate_below was
+  # tuned on the dev split only (scripts/escalation_curve.py), never on split:test.
+  - name: escalate-jev-sonnet
+    type: escalate
+    escalate_below: ${TDB_ESCALATE_BELOW:-0.85}    # dev: 93.0% acc, 24.1% escalated (curve in PR #4)
+    concurrency: 4
+    primary:
+      type: openrouter
+      model: typesafe/jev-1.13
+      mode: flat
+    fallback:
+      type: strands
+      provider: huggingface
+      base_url: https://openrouter.ai/api/v1
+      api_key_env: OPENROUTER_API_KEY
+      model_id: ${FRONTIER_MODEL_ID:-anthropic/claude-sonnet-5.5}
+      mode: structured
+      desc_chars: 300
+      temperature: 0
+      price_input_per_m: ${FRONTIER_USD_PER_M_IN:-2.0}
+      price_output_per_m: ${FRONTIER_USD_PER_M_OUT:-10.0}
+
+  # Shortlist: bge-small keeps the top k tools, Jev flat chooses among them (NONE kept).
+  - name: shortlist-bge-jev
+    type: shortlist
+    k: ${TDB_SHORTLIST_K:-10}           # dev: recall@10 98.4% / 97.3%; acc ties k=12 on multi_confused, cheaper
+    concurrency: 4
+    retriever:
+      type: embedding
+      model: BAAI/bge-small-en-v1.5
+    decider:
+      type: openrouter
+      model: typesafe/jev-1.13
+      mode: flat

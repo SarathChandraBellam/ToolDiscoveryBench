@@ -126,6 +126,10 @@ def summarize(
                 "false_abstain": _rate(ans, "abstained"),
                 # share of questions where the backend refused at least one sub-question
                 "refusal_rate": _rate(ok, "refused"),
+                # cascade routers (`escalate`): share of questions sent to the fallback
+                "escalation_rate": (
+                    _rate(ok, "escalated") if any("escalated" in r for r in ok) else None
+                ),
                 "lat_p50_ms": pct(lat, 0.5),
                 "lat_p95_ms": pct(lat, 0.95),
                 "lat_mean_ms": _mean(lat),
