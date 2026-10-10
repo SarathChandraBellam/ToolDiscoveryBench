@@ -12,7 +12,7 @@ setups: [all_tools, bm25_search, regex_search, router_first]   # + optional lang
 #   jev       the real TypeSafe Jev via the repo's decision-router path. PAID: also set
 #             allow_paid_router: true (or pass --allow-paid-router), only with approval.
 router: free_llm
-router_model: nvidia/nemotron-3.5-lightning:free
+router_model: apodex/apodex-1.1-mini:free   # nemotron-3.5-lightning:free timed out (504) in smoke runs
 jev_model: typesafe/jev-1.13
 allow_paid_router: false
 router_k: 3

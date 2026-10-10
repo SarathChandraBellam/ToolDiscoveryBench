@@ -31,7 +31,7 @@ DEFAULTS: dict[str, Any] = {
     "models": ["nvidia/nemotron-3-super-120b-a12b:free"],
     "setups": list(DEFAULT_SETUPS),
     "router": "free_llm",  # free_llm | bm25 | jev (jev is PAID: also needs allow_paid_router)
-    "router_model": "nvidia/nemotron-3.5-lightning:free",
+    "router_model": "apodex/apodex-1.1-mini:free",
     "jev_model": "typesafe/jev-1.13",
     "allow_paid_router": False,
     "router_k": 3,
@@ -134,7 +134,12 @@ def main(argv: list[str] | None = None) -> int:
         router = BM25ShortlistRouter(catalog.server_desc, int(cfg["router_k"]))
     else:
         selector_model = build_chat_model(
-            cfg["router_model"], counter, requests_per_minute=rpm, max_tokens=1024
+            cfg["router_model"],
+            counter,
+            requests_per_minute=rpm,
+            max_tokens=1024,
+            timeout=60,
+            max_retries=3,
         )
         router = FreeLLMRouter(selector_model, cfg["router_model"], k=int(cfg["router_k"]))
     status = 0
