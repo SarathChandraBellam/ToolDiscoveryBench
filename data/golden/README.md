@@ -1,5 +1,7 @@
 # Golden datasets
 
+See the [dataset card](../DATASET_CARD.md) for counts, provenance, known biases and contamination notes.
+
 ## Which set to use
 
 | Suite | File | Questions | Catalog | Notes |
