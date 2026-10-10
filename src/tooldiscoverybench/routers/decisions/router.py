@@ -30,7 +30,6 @@ import time
 from collections import defaultdict
 from typing import Any
 
-from tooldiscoverybench.catalog.option_text import OptionTextBuilder
 from tooldiscoverybench.core.models import RouteResult, Tool
 from tooldiscoverybench.routers.base import Ranked, Router
 from tooldiscoverybench.routers.decisions.types import (
@@ -113,12 +112,6 @@ class DecisionRouter(Router):
         self.allow_abstain = bool(cfg.get("allow_abstain", True))
         # factored only: ask "does any tool fit?" as its own question instead of a NONE server
         self.abstain_question = bool(cfg.get("abstain_question", False))
-        # how each tool option is described: plain (upstream description) or rich (hints)
-        self.option_text = OptionTextBuilder(
-            mode=cfg.get("option_text", "plain"),
-            desc_chars=self.desc_chars,
-            hints_path=cfg.get("option_hints"),
-        )
         self.client: DecisionClient = self.build_client(cfg)
 
     def build_client(self, cfg: dict[str, Any]) -> DecisionClient:
@@ -141,7 +134,7 @@ class DecisionRouter(Router):
     def _tool_question(
         self, tools: list[Tool], extra: str = "", with_none: bool = False
     ) -> ChoiceQuestion:
-        criteria = {t.id: self.option_text(t) for t in tools}
+        criteria = {t.id: f"[{t.server}] {t.name}: {t.short_desc(self.desc_chars)}" for t in tools}
         if with_none:
             criteria[NONE] = NONE_TOOL_TEXT
         return ChoiceQuestion(f"{self.instructions}{extra}", criteria)
@@ -153,7 +146,7 @@ class DecisionRouter(Router):
         for server, server_tools in by_server.items():
             desc = server_desc.get(server, "")
             lines.append(f"- {server}: {desc}".rstrip(": "))
-            lines += [f"  - {self.option_text(t)}" for t in server_tools]
+            lines += [f"  - {t.name}: {t.short_desc(self.desc_chars)}" for t in server_tools]
         return ChoiceQuestion(FIT_INSTRUCTIONS.format(catalog="\n".join(lines)), dict(FIT_CRITERIA))
 
     @staticmethod

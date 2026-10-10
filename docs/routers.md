@@ -51,32 +51,6 @@ Dialects:
 - `typesafe` (default): `POST https://api.typesafe.ai/v1/systemone`. The model id is bare (`jev-1.13`, pinned in `configs/bench.yaml`; `jev-latest` follows the alias) and questions use `type`.
 - `decisions`: any `/v1/decisions` gateway such as Bifrost or NanoGPT. Set `base_url`, `path` and `question_type_key`; the model id becomes `typesafe/jev-1.13` (pinned).
 
-### Option text (`option_text: plain | rich`)
-
-Every decision router (`openrouter`, `jev`, `openai_decisions`) describes each tool as one
-`choice` option. `plain` (the default, unchanged) sends `[server] name: <upstream
-description>` cut to `desc_chars`. `rich` sends hand-written text from
-`data/catalog/option_hints.json` (override with `option_hints: <path>`):
-
-```
-[deepwiki] read_wiki_structure: Returns only the table of contents (topic titles) of a repo's
-DeepWiki, no page text. Use when: the user asks for the topics, chapter headings, outline or
-table of contents ... Not when: the user wants to read the documentation content
-(read_wiki_contents) or get an explanation (ask_wiki_question). Key args: repoName (owner/repo).
-```
-
-The hints cover all 31 real tools and focus on the look-alike pairs Jev confused most (Context7
-resolve vs query, Svelte list-sections vs get-documentation, DeepWiki contents vs structure,
-search vs fetch/read on AWS and Microsoft Learn, gitmcp's library-name mapper vs the
-owner/repo tools, and read-only `hf_whoami` vs account actions). Tools without a hint
-(synthetic distractors) keep the plain text. Only the option text changes: the NONE option,
-instructions and server questions are untouched. Rich text costs about 1.5x the input tokens.
-`or-jev-flat-rich` in `configs/bench.yaml` is the opt-in variant of `or-jev-flat`.
-
-Hints were written from the tool descriptions and schemas, `dev`-split questions and the
-(gold -> picked) confusion counts of a test-split run; no `test`-split question text was read.
-Because they were tuned against `dev`, judge them on the `test` split.
-
 ### OpenAI Decisions API (`type: openai_decisions`)
 
 `POST https://api.openai.com/v1/decisions` (public beta), model `gpt-6-luna`. The request
