@@ -50,6 +50,14 @@ routers:
     concurrency: 4
     usd_per_m_input: 0.042               # fallback if usage.cost is missing; ctx 32K
 
+  - name: or-jev-flat-rich              # same, with hand-written option text (use when / not when)
+    type: openrouter
+    model: typesafe/jev-1.13
+    mode: flat
+    option_text: rich                    # plain (default) | rich: data/catalog/option_hints.json
+    concurrency: 4
+    usd_per_m_input: 0.042
+
   - name: or-jev-factored
     type: openrouter
     model: typesafe/jev-1.13
@@ -78,6 +86,15 @@ routers:
     mode: factored
     concurrency: 4
     usd_per_m_input: 0.10
+
+  - name: or-jev-factored-fitq-rich    # fit question + rich option text (PR #3)
+    type: openrouter
+    model: typesafe/jev-1.13
+    mode: factored
+    abstain_question: true
+    option_text: rich
+    concurrency: 4
+    usd_per_m_input: 0.042
 
   - name: or-luna-factored-fitq
     type: openrouter
