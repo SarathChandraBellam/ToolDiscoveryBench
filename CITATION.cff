@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use ToolDiscoveryBench, please cite it as below."
+title: "ToolDiscoveryBench: benchmarking routers that pick the right MCP tool"
+type: software
+authors:
+  - family-names: Bellam
+    given-names: Sarath Chandra
+repository-code: "https://github.com/SarathChandraBellam/ToolDiscoveryBench"
+url: "https://github.com/SarathChandraBellam/ToolDiscoveryBench"
+abstract: >-
+  A benchmark for the tool-search step of AI agents: given a request and a catalog of real
+  MCP tools, which tool should be called first, or none? It compares BM25, embeddings and
+  decision models (TypeSafe Jev, GPT-6 Luna Decisions) against first-tool picks from the
+  Claude Code and Codex agent harnesses, reporting accuracy, abstention, latency, cost and
+  calibration.
+keywords:
+  - mcp
+  - model-context-protocol
+  - tool-retrieval
+  - tool-calling
+  - benchmark
+  - agents
+license: MIT
+version: 0.1.0
+date-released: "2026-10-10"
