@@ -6,6 +6,7 @@ import math
 import re
 import time
 from collections import Counter
+from collections.abc import Callable
 
 from tooldiscoverybench.core.models import RouteResult, Tool
 from tooldiscoverybench.routers.base import Router
@@ -37,9 +38,14 @@ def bm25_rank(
     server_desc: dict[str, str],
     k1: float = 1.5,
     b: float = 0.75,
+    text_fn: Callable[[Tool, dict[str, str]], str] = tool_text,
 ) -> list[tuple[str, float]]:
-    """Best-first ``(tool_id, score)`` for ``question`` over ``tools`` (Okapi BM25)."""
-    docs = [tokenize(tool_text(t, server_desc)) for t in tools]
+    """Best-first ``(tool_id, score)`` for ``question`` over ``tools`` (Okapi BM25).
+
+    ``text_fn`` builds each tool's document (default: server, name, description, server
+    description).
+    """
+    docs = [tokenize(text_fn(t, server_desc)) for t in tools]
     avgdl = sum(map(len, docs)) / max(1, len(docs))
     doc_freq = Counter(term for doc in docs for term in set(doc))
     n_docs = len(docs)

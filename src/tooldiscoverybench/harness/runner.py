@@ -41,7 +41,8 @@ def sample_questions(
     test = set(test_qids_path.read_text().split())
     rows = [json.loads(line) for line in questions_path.read_text().splitlines() if line.strip()]
     dev = [
-        r for r in rows
+        r
+        for r in rows
         if r["source"] == "datasets_v1" and r["split"] == "dev" and r["qid"] not in test
     ]
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -59,27 +60,22 @@ def sample_questions(
     return picked
 
 
-def score_row(
-    q: dict[str, Any],
-    setup: str,
-    model_id: str,
-    run: AgentRun,
-    router: RouterPick | None,
-) -> dict[str, Any]:
+def score_row(q: dict[str, Any], setup: str, model_id: str, run: AgentRun) -> dict[str, Any]:
+    """One results.jsonl row. Totals (LLM calls, tokens, latency) include the router call."""
     gold = list(q["gold"])
     real = run.log.real_calls()
     first = real[0].tool_id if real else None
     searches = [c for c in run.log.calls if c.via == "search"]
     no_tool = not gold
-    said_no_tool = NO_TOOL in (run.final_text or "")
-    llm_calls = run.usage.calls + (router.llm_calls if router else 0)
-    in_tok = run.usage.input_tokens + (router.input_tokens if router else 0)
-    out_tok = run.usage.output_tokens + (router.output_tokens if router else 0)
-    latency = run.latency_ms + (router.latency_ms if router else 0.0)
+    u = run.usage
+    pick: RouterPick | None = run.router_pick
     # tool-call efficiency: positions are 1-based over ALL tool calls (discovery + real)
     all_calls = run.log.calls
-    gold_pos = next((i for i, c in enumerate(all_calls, 1) if c.via != "search" and c.tool_id in gold), None)
+    gold_pos = next(
+        (i for i, c in enumerate(all_calls, 1) if c.via != "search" and c.tool_id in gold), None
+    )
     gold_real_pos = next((i for i, c in enumerate(real, 1) if c.tool_id in gold), None)
+    # wrong real calls before the first gold call; for no-tool questions every real call
     wasted = (gold_real_pos - 1) if gold_real_pos else len(real)
     row: dict[str, Any] = {
         "setup": setup,
@@ -90,15 +86,12 @@ def score_row(
         "no_tool": no_tool,
         "gold_server": gold[0].split(".", 1)[0] if gold else NO_TOOL,
         "first_tool": first,
-        "first_tool_via": real[0].via if real else None,
         "tools_called": [c.tool_id for c in real],
         "top1_correct": (first is None) if no_tool else (first in gold),
-        "gold_ever_called": None if no_tool else any(c.tool_id in gold for c in real),
+        "gold_ever_called": None if no_tool else gold_real_pos is not None,
         "abstained": first is None,
-        "said_no_tool": said_no_tool,
-        "llm_calls": llm_calls,
-        "agent_llm_calls": run.usage.calls,
-        "tool_search_calls": len(searches),
+        "said_no_tool": NO_TOOL in (run.final_text or ""),
+        # efficiency
         "total_tool_calls": len(all_calls),
         "discovery_calls": len(searches),
         "real_tool_calls": len(real),
@@ -106,36 +99,42 @@ def score_row(
         "calls_to_gold": gold_pos,
         "real_calls_to_gold": gold_real_pos,
         "ended_with_gold": None if no_tool else bool(real) and real[-1].tool_id in gold,
-        "search_queries": [s["query"] for s in run.log.searches],
+        # cost: totals include the router; router also reported on its own
+        "llm_calls": u.calls + u.router_calls,
+        "agent_llm_calls": u.calls,
+        "router_llm_calls": u.router_calls,
+        "input_tokens": u.input_tokens + u.router_input_tokens,
+        "output_tokens": u.output_tokens + u.router_output_tokens,
+        "router_input_tokens": u.router_input_tokens,
+        "router_output_tokens": u.router_output_tokens,
+        "latency_ms": round(run.latency_ms, 1),
+        "router_latency_ms": round(pick.latency_ms, 1) if pick else 0.0,
+        "tool_search_calls": len(searches),
+        "search_inputs": [s["input"] for s in run.log.searches],
         "search_hits": [s["hits"] for s in run.log.searches],
-        "search_found_gold": None if no_tool else any(
-            g in hits for s in run.log.searches for hits in [s["hits"]] for g in gold
+        "search_errors": [s["error"] for s in run.log.searches if s["error"]],
+        "search_found_gold": (
+            None if no_tool else any(g in s["hits"] for s in run.log.searches for g in gold)
         ),
-        "input_tokens": in_tok,
-        "output_tokens": out_tok,
-        "latency_ms": round(latency, 1),
-        "agent_latency_ms": round(run.latency_ms, 1),
+        "initially_loaded": run.initially_loaded if setup != "all_tools" else "ALL",
+        "loaded_at_end": run.loaded_at_end,
+        "unloaded_tool_calls": run.unloaded_calls,
         "hit_step_cap": run.hit_step_cap,
-        "bound_tools": run.bound_tools,
         "skills_read": run.skills_read,
         "builtin_calls": run.builtin_calls,
         "final_text": run.final_text,
         "trace": run.trace,
         "error": run.error,
-        "llm_errors": run.usage.errors,
+        "llm_errors": u.errors,
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
     }
-    if router is not None:
+    if pick is not None:
         row.update(
-            router_label=router.label,
-            router_model=router.model,
-            router_tools=router.tool_ids,
-            router_hit=None if no_tool else any(g in router.tool_ids for g in gold),
-            router_error=router.error,
-            router_llm_calls=router.llm_calls,
-            router_input_tokens=router.input_tokens,
-            router_output_tokens=router.output_tokens,
-            router_latency_ms=round(router.latency_ms, 1),
+            router_label=pick.label,
+            router_model=pick.model,
+            router_tools=pick.tool_ids,
+            router_hit=None if no_tool else any(g in pick.tool_ids for g in gold),
+            router_error=pick.error,
             fallback_used=len(searches) > 0,
         )
     return row
@@ -155,7 +154,7 @@ def latest_rows(rows: list[dict[str, Any]]) -> dict[tuple[str, str, str], dict[s
     return out
 
 
-class BudgetExhausted(RuntimeError):
+class BudgetExhaustedError(RuntimeError):
     pass
 
 
@@ -168,6 +167,7 @@ def run_cell(
     out_path: Path,
     *,
     router: Any = None,
+    selector_model: Any = None,
     max_model_calls: int = 8,
     retry_errors: bool = False,
     budget_left: Callable[[], int] | None = None,
@@ -182,10 +182,11 @@ def run_cell(
         if prev and not (retry_errors and (prev.get("error") or prev.get("router_error"))):
             continue
         if budget_left is not None and budget_left() < reserve_per_question:
-            raise BudgetExhausted(f"stopping before {setup}/{model_id}/{q['qid']}: budget low")
-        pick = router.pick(q["question"], catalog.tools) if setup == "router_first" else None
-        run = run_agent(model, q["question"], setup, catalog, pick, max_model_calls)
-        row = score_row(q, setup, model_id, run, pick)
+            raise BudgetExhaustedError(f"stopping before {setup}/{model_id}/{q['qid']}: budget low")
+        run = run_agent(
+            model, q["question"], setup, catalog, router, max_model_calls, selector_model
+        )
+        row = score_row(q, setup, model_id, run)
         with out_path.open("a") as fh:
             fh.write(json.dumps(row) + "\n")
         written += 1

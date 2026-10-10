@@ -1,5 +1,7 @@
 """The upfront router for the ``router_first`` setup.
 
+``bm25``                The repo's BM25 baseline as a shortlist: top-k by BM25 over the question.
+                        No model call (0 LLM calls, 0 tokens).
 ``free_llm`` (default)  ONE chat call to a free OpenRouter model that returns the top-k tool
                         ids as JSON. Labelled "free-model router" in results. The repo's
                         decision-router path (``/api/alpha/decisions``) only serves decision
@@ -29,7 +31,9 @@ ROUTER_PROMPT = (
     'only, exactly: {{"tools": ["<id>", ...]}}'
 )
 
-ROUTER_LABELS = {"free_llm": "free-model router", "jev": "Jev (paid)"}
+ROUTER_LABELS = {"free_llm": "free-model router", "jev": "Jev (paid)", "bm25": "BM25 shortlist"}
+#: ``metadata.lc_source`` of router model calls, so usage counters can split them out
+ROUTER_SOURCE = "tdb_router"
 
 
 @dataclass
@@ -66,6 +70,28 @@ def parse_tool_ids(text: str, known: set[str], k: int) -> list[str]:
     return out[:k]
 
 
+class BM25ShortlistRouter:
+    kind = "bm25"
+
+    def __init__(self, server_desc: dict[str, str], k: int = 3) -> None:
+        self.server_desc = server_desc
+        self.k = k
+        self.model_id = "bm25"
+
+    def pick(self, question: str, tools: list[Tool]) -> RouterPick:
+        from tooldiscoverybench.routers.baselines.bm25 import bm25_rank
+
+        started = time.perf_counter()
+        ranked = bm25_rank(question, tools, self.server_desc)[: self.k]
+        return RouterPick(
+            [tid for tid, _ in ranked],
+            (time.perf_counter() - started) * 1000,
+            ROUTER_LABELS[self.kind],
+            self.model_id,
+            llm_calls=0,
+        )
+
+
 class FreeLLMRouter:
     kind = "free_llm"
 
@@ -82,7 +108,10 @@ class FreeLLMRouter:
         started = time.perf_counter()
         prompt = ROUTER_PROMPT.format(catalog=catalog_lines(tools, self.desc_chars), k=self.k)
         try:
-            msg = self.model.invoke([SystemMessage(prompt), HumanMessage(question)])
+            msg = self.model.invoke(
+                [SystemMessage(prompt), HumanMessage(question)],
+                config={"metadata": {"lc_source": ROUTER_SOURCE}},
+            )
         except Exception as exc:  # noqa: BLE001 - recorded on the row, agent still runs
             return RouterPick(
                 [],
@@ -114,7 +143,10 @@ class JevDecisionRouter:
     kind = "jev"
 
     def __init__(
-        self, server_desc: dict[str, str], k: int = 3, model: str = "typesafe/jev-1.13",
+        self,
+        server_desc: dict[str, str],
+        k: int = 3,
+        model: str = "typesafe/jev-1.13",
         allow_paid: bool = False,
     ) -> None:
         if not allow_paid:
@@ -125,8 +157,13 @@ class JevDecisionRouter:
         from tooldiscoverybench.routers.registry import build_router
 
         self.router = build_router(
-            {"type": "openrouter", "name": "jev-harness", "model": model, "mode": "flat",
-             "allow_abstain": False}
+            {
+                "type": "openrouter",
+                "name": "jev-harness",
+                "model": model,
+                "mode": "flat",
+                "allow_abstain": False,
+            }
         )
         self.server_desc = server_desc
         self.k = k

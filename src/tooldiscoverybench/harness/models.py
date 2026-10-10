@@ -105,4 +105,8 @@ def free_quota(timeout: float = 20.0) -> dict[str, Any]:
     resp.raise_for_status()
     data = resp.json().get("data", {})
     quota = data.get("free_model_daily_requests") or {}
-    return {"used": quota.get("used"), "limit": quota.get("limit"), "remaining": quota.get("remaining")}
+    return {
+        "used": quota.get("used"),
+        "limit": quota.get("limit"),
+        "remaining": quota.get("remaining"),
+    }

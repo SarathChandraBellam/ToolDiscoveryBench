@@ -4,10 +4,11 @@
 models:
   - nvidia/nemotron-3-super-120b-a12b:free
   - apodex/apodex-1.1-mini:free
-setups: [all_tools, bm25_search, router_first]
+setups: [all_tools, bm25_search, regex_search, router_first]   # + optional langchain_selector
 
 # Router for router_first:
 #   free_llm  one chat call to router_model (labelled "free-model router" in results)
+#   bm25      BM25 shortlist (no LLM call)
 #   jev       the real TypeSafe Jev via the repo's decision-router path. PAID: also set
 #             allow_paid_router: true (or pass --allow-paid-router), only with approval.
 router: free_llm

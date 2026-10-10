@@ -11,12 +11,17 @@ from typing import Any
 
 import yaml
 
-from tooldiscoverybench.harness import SETUPS
-from tooldiscoverybench.harness.models import RequestCounter, assert_free, build_chat_model, free_quota
+from tooldiscoverybench.harness import DEFAULT_SETUPS, SETUPS
+from tooldiscoverybench.harness.models import (
+    RequestCounter,
+    assert_free,
+    build_chat_model,
+    free_quota,
+)
 from tooldiscoverybench.harness.report import write_summary
-from tooldiscoverybench.harness.routing import FreeLLMRouter, JevDecisionRouter
+from tooldiscoverybench.harness.routing import BM25ShortlistRouter, FreeLLMRouter, JevDecisionRouter
 from tooldiscoverybench.harness.runner import (
-    BudgetExhausted,
+    BudgetExhaustedError,
     load_harness_catalog,
     run_cell,
     sample_questions,
@@ -24,8 +29,8 @@ from tooldiscoverybench.harness.runner import (
 
 DEFAULTS: dict[str, Any] = {
     "models": ["nvidia/nemotron-3-super-120b-a12b:free"],
-    "setups": list(SETUPS),
-    "router": "free_llm",  # free_llm | jev (jev is PAID: also needs allow_paid_router)
+    "setups": list(DEFAULT_SETUPS),
+    "router": "free_llm",  # free_llm | bm25 | jev (jev is PAID: also needs allow_paid_router)
     "router_model": "nvidia/nemotron-3.5-lightning:free",
     "jev_model": "typesafe/jev-1.13",
     "allow_paid_router": False,
@@ -45,10 +50,14 @@ def parse_args(argv: list[str] | None) -> dict[str, Any]:
     p.add_argument("--config", type=Path, help="YAML with any of the options below")
     p.add_argument("--models", nargs="+", help="free OpenRouter model ids (must end with :free)")
     p.add_argument("--setups", nargs="+", choices=SETUPS)
-    p.add_argument("--router", choices=["free_llm", "jev"])
+    p.add_argument("--router", choices=["free_llm", "bm25", "jev"])
     p.add_argument("--router-model")
-    p.add_argument("--allow-paid-router", action="store_true", default=None,
-                   help="permit router=jev (paid). Needs the owner's approval.")
+    p.add_argument(
+        "--allow-paid-router",
+        action="store_true",
+        default=None,
+        help="permit router=jev (paid). Needs the owner's approval.",
+    )
     p.add_argument("--n-per-server", type=int)
     p.add_argument("--n-no-tool", type=int)
     p.add_argument("--limit", type=int, help="only the first N sampled questions (smoke runs)")
@@ -77,11 +86,12 @@ def main(argv: list[str] | None = None) -> int:
     if cfg.get("limit"):
         questions = questions[: cfg["limit"]]
     qids = [q["qid"] for q in questions]
-    router_label = (
-        f"free-model router ({cfg['router_model']}), top-{cfg['router_k']}"
-        if cfg["router"] == "free_llm"
-        else f"Jev ({cfg['jev_model']}, PAID), top-{cfg['router_k']}"
-    )
+    router_label = {
+        "free_llm": f"free-model router ({cfg['router_model']}), top-{cfg['router_k']}, "
+        "one call per task via ToolRouterMiddleware",
+        "bm25": f"BM25 shortlist, top-{cfg['router_k']} (no LLM call)",
+        "jev": f"Jev ({cfg['jev_model']}, PAID), top-{cfg['router_k']}",
+    }[cfg["router"]]
     meta = {
         "n_questions": len(qids),
         "n_answerable": sum(not q["no_tool"] for q in questions),
@@ -102,34 +112,51 @@ def main(argv: list[str] | None = None) -> int:
     counter = RequestCounter()
     quota = free_quota()
     print(f"free-model quota at start: {quota}", flush=True)
-    start_remaining = int(quota.get("remaining") or 0)
+    state = {"remaining": int(quota.get("remaining") or 0), "at": 0}
+
+    def refresh_quota() -> None:
+        q = free_quota()
+        state["remaining"], state["at"] = int(q.get("remaining") or 0), counter.count
+        print(f"free-model quota: {q}", flush=True)
 
     def budget_left() -> int:
-        return start_remaining - counter.count - int(cfg["quota_reserve"])
+        # OpenRouter's count may lag; subtract every request we sent since the last check
+        return state["remaining"] - (counter.count - state["at"]) - int(cfg["quota_reserve"])
 
     rpm = float(cfg["requests_per_minute"])
     router: Any
+    selector_model = None
     if cfg["router"] == "jev":
         router = JevDecisionRouter(
             catalog.server_desc, cfg["router_k"], cfg["jev_model"], bool(cfg["allow_paid_router"])
         )
+    elif cfg["router"] == "bm25":
+        router = BM25ShortlistRouter(catalog.server_desc, int(cfg["router_k"]))
     else:
-        router = FreeLLMRouter(
-            build_chat_model(cfg["router_model"], counter, requests_per_minute=rpm, max_tokens=1024),
-            cfg["router_model"],
-            k=int(cfg["router_k"]),
+        selector_model = build_chat_model(
+            cfg["router_model"], counter, requests_per_minute=rpm, max_tokens=1024
         )
+        router = FreeLLMRouter(selector_model, cfg["router_model"], k=int(cfg["router_k"]))
     status = 0
     try:
         for model_id in cfg["models"]:  # one model across every setup before the next
             model = build_chat_model(model_id, counter, requests_per_minute=rpm)
             for setup in cfg["setups"]:
+                refresh_quota()
                 t0 = time.perf_counter()
                 before = counter.count
                 n = run_cell(
-                    setup, model_id, model, questions, catalog, out / "results.jsonl",
-                    router=router, max_model_calls=int(cfg["max_model_calls"]),
-                    retry_errors=bool(cfg.get("retry_errors")), budget_left=budget_left,
+                    setup,
+                    model_id,
+                    model,
+                    questions,
+                    catalog,
+                    out / "results.jsonl",
+                    router=router,
+                    selector_model=selector_model,
+                    max_model_calls=int(cfg["max_model_calls"]),
+                    retry_errors=bool(cfg.get("retry_errors")),
+                    budget_left=budget_left,
                     log=lambda s: print(s, flush=True),
                 )
                 print(
@@ -137,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
                     f"{time.perf_counter() - t0:.0f}s; total requests {counter.count}",
                     flush=True,
                 )
-    except BudgetExhausted as exc:
+    except BudgetExhaustedError as exc:
         print(f"STOP: {exc}", flush=True)
         status = 2
     print(f"requests sent this run: {counter.count}; quota now: {free_quota()}", flush=True)
