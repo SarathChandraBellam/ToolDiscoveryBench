@@ -1,0 +1,27 @@
+# deepagents harness simulation (python -m tooldiscoverybench.harness --config configs/harness.yaml)
+# Only OpenRouter models whose id ends with ":free" are accepted for the agent and the
+# free-model router; anything else is refused before a request is sent.
+models:
+  - nvidia/nemotron-3-super-120b-a12b:free
+  - apodex/apodex-1.1-mini:free
+setups: [all_tools, bm25_search, router_first]
+
+# Router for router_first:
+#   free_llm  one chat call to router_model (labelled "free-model router" in results)
+#   jev       the real TypeSafe Jev via the repo's decision-router path. PAID: also set
+#             allow_paid_router: true (or pass --allow-paid-router), only with approval.
+router: free_llm
+router_model: nvidia/nemotron-3.5-lightning:free
+jev_model: typesafe/jev-1.13
+allow_paid_router: false
+router_k: 3
+
+# Sample: dev split of datasets_v1 only (never data/golden/splits/test_qids.txt)
+n_per_server: 4      # x 10 servers, stratified by the gold tool's server
+n_no_tool: 8
+seed: 20261010
+
+max_model_calls: 8   # agent step cap per question
+requests_per_minute: 15
+quota_reserve: 25    # stop cleanly when this few free-model requests remain today
+out: /workspace/tdb-runs/harness-deepagents
