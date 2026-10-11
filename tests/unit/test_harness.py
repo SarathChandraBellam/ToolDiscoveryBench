@@ -396,6 +396,7 @@ def test_jev_spend_cap_stops_before_overspending(catalog: Any) -> None:
     jev = JevDecisionRouter.__new__(JevDecisionRouter)
     jev.router, jev.server_desc, jev.k, jev.model_id = FakeDecisions(), {}, 1, "jev"
     jev.max_spend_usd, jev.spent_usd, jev.calls, jev._worst_call_usd = 1.0, 0.0, 0, 0.001
+    jev.timeout = 5.0
     for _ in range(2):
         pick = jev.pick("q", catalog.tools)
     assert pick.tool_ids == [ASTRO] and pick.raw["cost_usd"] == 0.4
@@ -462,3 +463,75 @@ def test_multiturn_summary_reports_complete_cells_only(tmp_path: Path) -> None:
     assert "0.25 / 0.25 / 0.25" in text and "0.000200" in text  # router latency, cost per turn
     assert "| router_first_jev | m | 1 | 0 | 1.00 (1/1) | 1.00 (2/2) | 2.00 |" in text
     assert "all_tools / m: 1/2 questions (excluded)" in text
+
+
+# ------------------------------------------------------------ timeouts, paid models, spend
+def test_task_timeout_is_recorded_as_an_error_row(catalog: Any) -> None:
+    import time
+
+    class StuckModel(ScriptedModel):
+        def _generate(self, *args: Any, **kwargs: Any) -> Any:
+            time.sleep(5)  # a call that never comes back in time
+            return super()._generate(*args, **kwargs)
+
+    model = StuckModel(messages=iter([AIMessage("late")]))
+    started = time.perf_counter()
+    runs = run_conversation(model, TURNS, "all_tools", catalog, task_timeout=0.3)
+    assert time.perf_counter() - started < 3  # the run moved on instead of waiting
+    assert runs[0].error and runs[0].error.startswith("TaskTimeout")
+    assert runs[1].error and runs[1].error.startswith("skipped")  # conversation abandoned
+    row = score_row(Q, "all_tools", "fake:free", runs[0])
+    assert row["error"].startswith("TaskTimeout") and not row["top1_correct"]
+
+
+def test_jev_call_timeout_returns_an_error_pick(catalog: Any) -> None:
+    import asyncio
+
+    class SlowDecisions:
+        async def route(self, question: str, tools: Any, server_desc: Any) -> Any:
+            await asyncio.sleep(5)
+
+    jev = JevDecisionRouter.__new__(JevDecisionRouter)
+    jev.router, jev.server_desc, jev.k, jev.model_id = SlowDecisions(), {}, 3, "jev"
+    jev.max_spend_usd, jev.spent_usd, jev.calls, jev._worst_call_usd = 1.0, 0.0, 0, 0.001
+    jev.timeout = 0.2
+    pick = jev.pick("q", catalog.tools)
+    assert pick.tool_ids == [] and pick.error and "TimeoutError" in pick.error
+    assert jev.spent_usd == 0.0  # nothing charged for a call that never answered
+
+
+def test_paid_agent_models_need_allowlist_and_flag() -> None:
+    from tooldiscoverybench.harness.models import assert_allowed
+
+    paid = ["openai/gpt-6-luna"]
+    assert assert_allowed("a/b:free") == "a/b:free"
+    assert assert_allowed("openai/gpt-6-luna", paid, True) == "openai/gpt-6-luna"
+    with pytest.raises(PaidModelError):
+        assert_allowed("openai/gpt-6-luna", paid, False)  # listed, but paid runs are off
+    with pytest.raises(PaidModelError):
+        assert_allowed("anthropic/claude-opus-5.5", paid, True)  # not on the allowlist
+
+
+def test_spend_cap_and_billed_cost(catalog: Any) -> None:
+    from tooldiscoverybench.harness.routing import BudgetExhaustedError
+    from tooldiscoverybench.harness.runner import SpendCap
+
+    cap = SpendCap(3.0, spent=2.0)
+    cap.check("first task")  # nothing seen yet: allowed
+    cap.add(0.6)
+    with pytest.raises(BudgetExhaustedError):
+        cap.check("next task")  # 2.6 + another 0.6 would pass $3
+    cap = SpendCap(3.0, spent=2.0)
+    cap.add(0.3)
+    cap.check("one task")
+    with pytest.raises(BudgetExhaustedError):
+        cap.check("a 3-turn conversation", tasks=3)
+
+    # the cost OpenRouter reports on each call ends up on the row
+    msgs = [call("astro-docs__search_astro_docs", {"query": "x"}), AIMessage("done")]
+    for m in msgs:
+        m.response_metadata = {"token_usage": {"cost": 0.002}}
+    run = run_agent(scripted(*msgs), Q["question"], "all_tools", catalog)
+    row = score_row(Q, "all_tools", "paid/model", run)
+    assert row["agent_cost_usd"] == pytest.approx(0.004) == row["cost_usd"]
+    assert row["router_cost_usd"] is None

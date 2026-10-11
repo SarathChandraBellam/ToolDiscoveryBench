@@ -126,6 +126,9 @@ def score_row(q: dict[str, Any], setup: str, model_id: str, run: AgentRun) -> di
         "router_call_latencies_ms": [e["latency_ms"] for e in events],
         "request_tools_calls": sum(e["source"] == "request_tools" for e in events),
         "router_cost_usd": round(sum(costs), 8) if costs else None,
+        # OpenRouter-billed cost: the agent's own calls, and agent + router
+        "agent_cost_usd": round(u.cost_usd, 8),
+        "cost_usd": round(u.cost_usd + sum(costs), 8),
         "tool_search_calls": len(searches),
         "search_inputs": [s["input"] for s in run.log.searches],
         "search_hits": [s["hits"] for s in run.log.searches],
@@ -258,6 +261,8 @@ def run_conversation_cell(
     router: Any = None,
     max_model_calls: int = 8,
     options: RouterOptions | None = None,
+    task_timeout: float | None = None,
+    spend: SpendCap | None = None,
     budget_left: Callable[[], int] | None = None,
     reserve_per_turn: int = 12,
     log: Callable[[str], None] = print,
@@ -275,6 +280,8 @@ def run_conversation_cell(
             raise BudgetExhaustedError(
                 f"stopping before {setup}/{model_id}/{conv['conv_id']}: budget low"
             )
+        if spend is not None:
+            spend.check(f"{setup}/{model_id}/{conv['conv_id']}", tasks=n)
         runs = run_conversation(
             model,
             [t["question"] for t in conv["turns"]],
@@ -283,6 +290,7 @@ def run_conversation_cell(
             router,
             max_model_calls,
             options=options,
+            task_timeout=task_timeout,
         )
         rows = []
         for t, (turn, run) in enumerate(zip(conv["turns"], runs, strict=True), 1):
@@ -295,6 +303,9 @@ def run_conversation_cell(
                 source_qid=turn["qid"],
             )
             rows.append(row)
+        if spend is not None:
+            for r in rows:
+                spend.add(r["cost_usd"])
         with out_path.open("a") as fh:
             fh.writelines(json.dumps(r) + "\n" for r in rows)
         written += len(rows)
@@ -306,6 +317,29 @@ def run_conversation_cell(
             f"err={next((r['error'][:60] for r in rows if r['error']), '')}"
         )
     return written
+
+
+class SpendCap:
+    """Hard stop on paid spend (agent + router, as billed by OpenRouter) for one step.
+
+    ``spent`` starts from what earlier runs of the step recorded and grows with every row
+    written. A task only starts if the most expensive task seen so far would still fit.
+    """
+
+    def __init__(self, max_usd: float, spent: float = 0.0) -> None:
+        self.max_usd = max_usd
+        self.spent = spent
+        self.worst_task = 0.0
+
+    def add(self, cost: float) -> None:
+        self.spent += cost
+        self.worst_task = max(self.worst_task, cost)
+
+    def check(self, what: str, tasks: int = 1) -> None:
+        if self.spent + self.worst_task * tasks > self.max_usd:
+            raise BudgetExhaustedError(
+                f"stopping before {what}: paid spend ${self.spent:.4f}, cap ${self.max_usd:.2f}"
+            )
 
 
 def load_results(path: Path) -> list[dict[str, Any]]:
@@ -335,6 +369,8 @@ def run_cell(
     max_model_calls: int = 8,
     options: RouterOptions | None = None,
     retry_errors: bool = False,
+    task_timeout: float | None = None,
+    spend: SpendCap | None = None,
     budget_left: Callable[[], int] | None = None,
     reserve_per_question: int = 12,
     log: Callable[[str], None] = print,
@@ -348,10 +384,22 @@ def run_cell(
             continue
         if budget_left is not None and budget_left() < reserve_per_question:
             raise BudgetExhaustedError(f"stopping before {setup}/{model_id}/{q['qid']}: budget low")
+        if spend is not None:
+            spend.check(f"{setup}/{model_id}/{q['qid']}")
         run = run_agent(
-            model, q["question"], setup, catalog, router, max_model_calls, selector_model, options
+            model,
+            q["question"],
+            setup,
+            catalog,
+            router,
+            max_model_calls,
+            selector_model,
+            options,
+            task_timeout,
         )
         row = score_row(q, setup, model_id, run)
+        if spend is not None:
+            spend.add(row["cost_usd"])
         with out_path.open("a") as fh:
             fh.write(json.dumps(row) + "\n")
         written += 1

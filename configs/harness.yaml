@@ -4,6 +4,19 @@
 models:
   - nvidia/nemotron-3-super-120b-a12b:free
   - apodex/apodex-1.1-mini:free
+# Paid AGENT models are refused unless listed here AND the run passes --allow-paid-models.
+# Billed cost is read from OpenRouter per call; the run stops before the recorded paid spend
+# of its models (agent + router, rows from spend_since on) would pass max_spend_usd.
+paid_models:
+  - openai/gpt-6-luna
+  - z-ai/glm-5.3-flash
+  - ~z-ai/glm-flash-latest
+  - z-ai/glm-4.7-flash
+allow_paid_models: false
+max_spend_usd: 3.0
+paid_requests_per_minute: 120
+call_timeout_s: 90     # hard limit per model / router request (2 retries)
+task_timeout_s: 300    # wall-clock cap per task (turn); recorded as a TaskTimeout error
 setups: [all_tools, bm25_search, regex_search, router_first]   # + router_first_jev (paid), langchain_selector
 
 # Router for router_first:

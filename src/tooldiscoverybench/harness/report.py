@@ -66,7 +66,8 @@ COMPARISON = [
     ("router_tok", "router input tok/task"),
     ("router_lat", "router latency per call s (mean / p50 / p90)"),
     ("latency", "task latency s (mean / p50 / p90)"),
-    ("cost", "router cost $/task"),
+    ("router_cost", "router cost $/task"),
+    ("cost", "total cost $/task (agent + router)"),
 ]
 PER_TURN = [
     ("setup", "setup"),
@@ -98,6 +99,7 @@ PER_CONVERSATION = [
     ("latency", "latency s (mean / p50 / p90)"),
     ("router_lat", "router s"),
     ("cost", "router cost $"),
+    ("total_cost", "total cost $"),
 ]
 NO_TOOL = [
     ("setup", "setup"),
@@ -183,7 +185,10 @@ def _comparison(setup: str, model: str, rs: list[dict[str, Any]]) -> dict[str, s
         "router_tok": _mean([r.get("router_input_tokens", 0) for r in ok], "{:,.0f}"),
         "router_lat": _dist(_router_latencies(ok), "{:.2f}"),
         "latency": _dist([r["latency_ms"] / 1000 for r in ok]),
-        "cost": _cost(ok),
+        "router_cost": _cost(ok),
+        "cost": _mean(
+            [float(r.get("cost_usd", r.get("router_cost_usd")) or 0) for r in ok], "{:.6f}"
+        ),
     }
 
 
@@ -429,6 +434,10 @@ def _per_conversation(setup: str, model: str, rs: list[dict[str, Any]]) -> dict[
         "out_tok": _mean(total("output_tokens"), "{:,.0f}"),
         "latency": _dist([v / 1000 for v in total("latency_ms")]),
         "router_lat": _mean([v / 1000 for v in total("router_latency_ms")], "{:.2f}"),
+        "total_cost": _mean(
+            [sum(float(r.get("cost_usd", r.get("router_cost_usd")) or 0) for r in g) for g in ok],
+            "{:.6f}",
+        ),
         "cost": (
             "–" if not routed else f"{sum(costs) / len(ok):.6f}" if costs and ok else "0 (free)"
         ),

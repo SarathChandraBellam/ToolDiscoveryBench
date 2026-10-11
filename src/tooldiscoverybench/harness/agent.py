@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Any
 from langchain_core.callbacks import BaseCallbackHandler
 
 from tooldiscoverybench.harness.middleware import DeferredToolsMiddleware, ToolRouterMiddleware
+from tooldiscoverybench.harness.models import call_cost
 from tooldiscoverybench.harness.routing import ROUTER_SOURCE, BudgetExhaustedError
 from tooldiscoverybench.harness.tools import REQUEST_TOOL, SEARCH_TOOL, CallLog, Catalog
 
@@ -101,6 +103,7 @@ class UsageCounter(BaseCallbackHandler):
         self.calls = self.input_tokens = self.output_tokens = 0
         self.router_calls = self.router_input_tokens = self.router_output_tokens = 0
         self.errors = 0
+        self.cost_usd = 0.0  # OpenRouter-billed cost of the agent's own model calls
         self._router_runs: set[Any] = set()
 
     def on_chat_model_start(self, serialized: Any, messages: Any, **kwargs: Any) -> None:
@@ -125,6 +128,7 @@ class UsageCounter(BaseCallbackHandler):
                 else:
                     self.input_tokens += i
                     self.output_tokens += o
+                    self.cost_usd += call_cost(getattr(gen, "message", None)) or 0.0
 
     def on_llm_error(self, error: BaseException, **kwargs: Any) -> None:
         self.errors += 1
@@ -240,7 +244,7 @@ def _text(content: Any) -> str:
     return str(content)
 
 
-def run_conversation(  # noqa: PLR0915 - one linear loop over turns
+def run_conversation(  # noqa: PLR0912, PLR0915 - one linear loop over turns
     model: Any,
     turns: list[str],
     setup: str,
@@ -249,11 +253,14 @@ def run_conversation(  # noqa: PLR0915 - one linear loop over turns
     max_model_calls: int = 8,
     selector_model: Any = None,
     options: RouterOptions | None = None,
+    task_timeout: float | None = None,
 ) -> list[AgentRun]:
     """Run ``turns`` as one conversation on one agent thread; one ``AgentRun`` per turn.
 
-    The step cap applies per turn. A turn that errors ends the conversation: later turns are
-    returned as error rows without being run.
+    The step cap applies per turn. ``task_timeout`` is a wall-clock cap per turn: a turn
+    that is still running after that many seconds is abandoned and recorded as a
+    ``TaskTimeout`` error, so one stuck call cannot stall a run. A turn that errors ends the
+    conversation: later turns are returned as error rows without being run.
     """
     from langchain_core.messages import HumanMessage
     from langgraph.checkpoint.memory import InMemorySaver
@@ -298,11 +305,28 @@ def run_conversation(  # noqa: PLR0915 - one linear loop over turns
             }
             if multi:
                 config["configurable"] = {"thread_id": "conversation"}
-            # stream full states so a run that dies mid-way still yields its messages
-            for state in agent.stream(  # noqa: B007
-                {"messages": [HumanMessage(question)]}, config=config, stream_mode="values"
-            ):
-                pass
+            box: dict[str, Any] = {"state": {}, "exc": None}
+
+            def work(
+                agent: Any = agent, config: Any = config, question: str = question, box: Any = box
+            ) -> None:
+                try:
+                    # stream full states so a run that dies mid-way still yields its messages
+                    for latest in agent.stream(
+                        {"messages": [HumanMessage(question)]}, config=config, stream_mode="values"
+                    ):
+                        box["state"] = latest
+                except BaseException as exc:  # noqa: BLE001 - re-raised in the caller below
+                    box["exc"] = exc
+
+            worker = threading.Thread(target=work, daemon=True, name="harness-task")
+            worker.start()
+            worker.join(task_timeout)
+            state = box["state"]
+            if worker.is_alive():  # abandoned: the daemon thread dies with the process
+                run.error = f"TaskTimeout: turn still running after {task_timeout:.0f}s"
+            elif box["exc"] is not None:
+                raise box["exc"]
         except BudgetExhaustedError:
             raise  # paid-router spend cap: stop the whole run, write no row
         except GraphRecursionError:
@@ -338,10 +362,19 @@ def run_agent(
     max_model_calls: int = 8,
     selector_model: Any = None,
     options: RouterOptions | None = None,
+    task_timeout: float | None = None,
 ) -> AgentRun:
     """One single-turn run."""
     return run_conversation(
-        model, [question], setup, catalog, router, max_model_calls, selector_model, options
+        model,
+        [question],
+        setup,
+        catalog,
+        router,
+        max_model_calls,
+        selector_model,
+        options,
+        task_timeout,
     )[0]
 
 

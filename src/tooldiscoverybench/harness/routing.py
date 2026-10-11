@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import re
 import threading
@@ -23,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from tooldiscoverybench.core.models import Tool
+from tooldiscoverybench.harness.models import call_cost
 from tooldiscoverybench.routers.base import catalog_lines
 
 ROUTER_PROMPT = (
@@ -140,7 +142,7 @@ class FreeLLMRouter:
             input_tokens=int(usage.get("input_tokens", 0) or 0),
             output_tokens=int(usage.get("output_tokens", 0) or 0),
             error=None if ids else "router returned no valid tool ids",
-            raw={"text": text[:400]},
+            raw={"text": text[:400], "cost_usd": call_cost(msg)},
         )
 
 
@@ -157,6 +159,7 @@ class JevDecisionRouter:
         allow_paid: bool = False,
         max_spend_usd: float = 1.0,
         spent_usd: float = 0.0,
+        timeout: float = 90.0,
     ) -> None:
         if not allow_paid:
             raise PermissionError(
@@ -178,6 +181,7 @@ class JevDecisionRouter:
         self.k = k
         self.model_id = model
         self.max_spend_usd = max_spend_usd
+        self.timeout = timeout  # hard limit per Jev call
         self.spent_usd = spent_usd  # spend so far, including earlier runs (from result files)
         self.calls = 0
         self._worst_call_usd = UNREPORTED_COST_USD
@@ -189,7 +193,12 @@ class JevDecisionRouter:
         if loop is None:
             loop = self._loop = asyncio.new_event_loop()
             threading.Thread(target=loop.run_forever, daemon=True, name="jev-router").start()
-        return asyncio.run_coroutine_threadsafe(coro, loop).result()
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        try:
+            return future.result(timeout=self.timeout)
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            raise TimeoutError(f"Jev call exceeded {self.timeout:.0f}s") from None
 
     def pick(self, question: str, tools: list[Tool]) -> RouterPick:
         if self.spent_usd + self._worst_call_usd > self.max_spend_usd:
@@ -197,7 +206,20 @@ class JevDecisionRouter:
                 f"Jev spend cap: ${self.spent_usd:.4f} spent, next call could exceed "
                 f"${self.max_spend_usd:.2f}"
             )
-        res = self._run(self.router.route(question, tools, self.server_desc))
+        started = time.perf_counter()
+        try:
+            res = self._run(self.router.route(question, tools, self.server_desc))
+        except TimeoutError as exc:  # recorded on the row; the agent still runs
+            self.calls += 1
+            return RouterPick(
+                [],
+                (time.perf_counter() - started) * 1000,
+                ROUTER_LABELS[self.kind],
+                self.model_id,
+                llm_calls=1,
+                error=f"TimeoutError: {exc}",
+                raw={"cost_usd": None},
+            )
         # a successful call with no reported cost is charged a conservative estimate
         cost = res.cost_usd
         if cost is None:

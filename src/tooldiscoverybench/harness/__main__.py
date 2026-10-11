@@ -15,7 +15,7 @@ from tooldiscoverybench.harness import DEFAULT_SETUPS, SETUPS
 from tooldiscoverybench.harness.agent import RouterOptions
 from tooldiscoverybench.harness.models import (
     RequestCounter,
-    assert_free,
+    assert_allowed,
     build_chat_model,
     free_quota,
 )
@@ -27,6 +27,7 @@ from tooldiscoverybench.harness.routing import (
     JevDecisionRouter,
 )
 from tooldiscoverybench.harness.runner import (
+    SpendCap,
     build_conversations,
     load_harness_catalog,
     load_results,
@@ -42,6 +43,14 @@ DEFAULTS: dict[str, Any] = {
     "router_model": "apodex/apodex-1.1-mini:free",
     "jev_model": "typesafe/jev-1.13",
     "allow_paid_router": False,
+    # paid AGENT models: refused unless listed here and the run passes --allow-paid-models
+    "paid_models": [],
+    "allow_paid_models": False,
+    "max_spend_usd": 3.0,  # hard cap on recorded paid spend (agent + router) since spend_since
+    "spend_since": "",  # only rows with ts >= this count towards max_spend_usd ("" = all)
+    "call_timeout_s": 90,  # hard limit per model / router request
+    "task_timeout_s": 300,  # wall-clock cap per task (turn); recorded as a TaskTimeout error
+    "paid_requests_per_minute": 120,
     "jev_max_spend_usd": 1.0,  # hard cap on Jev spend across runs into the same out dir
     "router_k": 3,
     # ToolRouterMiddleware options, per suite (single-turn keeps the PR's first configuration)
@@ -82,6 +91,16 @@ def parse_args(argv: list[str] | None) -> dict[str, Any]:
         help="permit router=jev (paid). Needs the owner's approval.",
     )
     p.add_argument("--suite", choices=["single", "multiturn"])
+    p.add_argument(
+        "--allow-paid-models",
+        action="store_true",
+        default=None,
+        help="permit agent models listed in `paid_models`. Needs the owner's approval.",
+    )
+    p.add_argument("--max-spend-usd", type=float, help="hard cap on recorded paid spend")
+    p.add_argument("--spend-since", help="count only rows with ts >= this towards the cap")
+    p.add_argument("--task-timeout-s", type=float)
+    p.add_argument("--call-timeout-s", type=float)
     p.add_argument("--jev-max-spend-usd", type=float, help="stop before Jev spend passes this")
     p.add_argument("--carry", choices=["cap", "keep", "replace"])
     p.add_argument("--n-per-server", type=int)
@@ -103,6 +122,18 @@ def parse_args(argv: list[str] | None) -> dict[str, Any]:
         if value is not None and key != "config":
             cfg[key] = value
     return cfg
+
+
+def paid_spend(out: Path, since: str = "", models: Any = None) -> float:
+    """Recorded paid spend (agent + router) in this out dir, optionally only rows from
+    ``since`` on and only for ``models`` (so parallel runs of different models each keep
+    their own share of a budget)."""
+    rows = load_results(out / "results.jsonl") + load_results(out / "multiturn_results.jsonl")
+    return sum(
+        float(r.get("cost_usd", r.get("router_cost_usd")) or 0)
+        for r in rows
+        if r.get("ts", "") >= since and (models is None or r["model"] in models)
+    )
 
 
 def jev_spend(out: Path) -> float:
@@ -188,8 +219,18 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - line
         return 0
 
     for m in cfg["models"]:
-        assert_free(m)
-    counter = RequestCounter()
+        assert_allowed(m, cfg["paid_models"], bool(cfg["allow_paid_models"]))
+    counter = RequestCounter()  # requests to FREE models only: they draw on the daily quota
+    paid_counter = RequestCounter()
+    spend = SpendCap(
+        float(cfg["max_spend_usd"]), paid_spend(out, str(cfg["spend_since"]), set(cfg["models"]))
+    )
+    print(
+        f"paid spend recorded so far for {cfg['models']}: ${spend.spent:.4f} "
+        f"(cap ${spend.max_usd})",
+        flush=True,
+    )
+    call_timeout, task_timeout = float(cfg["call_timeout_s"]), float(cfg["task_timeout_s"])
     quota = free_quota()
     print(f"free-model quota at start: {quota}", flush=True)
     state = {"remaining": int(quota.get("remaining") or 0), "at": 0}
@@ -214,6 +255,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - line
             bool(cfg["allow_paid_router"]),
             max_spend_usd=float(cfg["jev_max_spend_usd"]),
             spent_usd=jev_spend(out),
+            timeout=call_timeout,
         )
         print(f"Jev spend so far in {out}: ${jev.spent_usd:.6f} (cap ${jev.max_spend_usd})")
     router: Any
@@ -227,14 +269,21 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - line
             counter,
             requests_per_minute=rpm,
             max_tokens=1024,
-            timeout=60,
-            max_retries=3,
+            timeout=min(60.0, call_timeout),
+            max_retries=2,
         )
         router = FreeLLMRouter(selector_model, cfg["router_model"], k=int(cfg["router_k"]))
     status = 0
     try:
         for model_id in cfg["models"]:  # one model across every setup before the next
-            model = build_chat_model(model_id, counter, requests_per_minute=rpm)
+            free = model_id.endswith(":free")
+            model = build_chat_model(
+                model_id,
+                counter if free else paid_counter,
+                requests_per_minute=rpm if free else float(cfg["paid_requests_per_minute"]),
+                timeout=call_timeout,
+                paid_ok=not free,
+            )
             for setup in cfg["setups"]:
                 refresh_quota()
                 t0 = time.perf_counter()
@@ -251,6 +300,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - line
                         router=setup_router,
                         max_model_calls=int(cfg["max_model_calls"]),
                         options=options,
+                        task_timeout=task_timeout,
+                        spend=spend,
                         budget_left=budget_left,
                         log=lambda s: print(s, flush=True),
                     )
@@ -267,19 +318,26 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - line
                         max_model_calls=int(cfg["max_model_calls"]),
                         options=options,
                         retry_errors=bool(cfg.get("retry_errors")),
+                        task_timeout=task_timeout,
+                        spend=spend,
                         budget_left=budget_left,
                         log=lambda s: print(s, flush=True),
                     )
                 print(
                     f"== cell {setup}/{model_id}: {n} rows, {counter.count - before} requests, "
-                    f"{time.perf_counter() - t0:.0f}s; total requests {counter.count}"
+                    f"{time.perf_counter() - t0:.0f}s; free requests {counter.count}, paid "
+                    f"requests {paid_counter.count}, paid spend ${spend.spent:.4f}"
                     + (f"; Jev spend ${jev.spent_usd:.6f} over {jev.calls} calls" if jev else ""),
                     flush=True,
                 )
     except BudgetExhaustedError as exc:
         print(f"STOP: {exc}", flush=True)
         status = 2
-    print(f"requests sent this run: {counter.count}; quota now: {free_quota()}", flush=True)
+    print(
+        f"free requests this run: {counter.count}, paid requests: {paid_counter.count}, "
+        f"recorded paid spend: ${spend.spent:.4f}; quota now: {free_quota()}",
+        flush=True,
+    )
     if jev:
         print(f"Jev spend recorded in {out}: ${jev_spend(out):.6f}", flush=True)
     print(summary())

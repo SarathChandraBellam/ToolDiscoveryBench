@@ -22,6 +22,19 @@ class PaidModelError(ValueError):
     """Raised when a non-free model id reaches the harness."""
 
 
+#: paid agent models are refused unless listed here AND the run passes --allow-paid-models
+def assert_allowed(model_id: str, paid_allowlist: Any = (), allow_paid: bool = False) -> str:
+    """Free ids always pass; a paid id only when it is allow-listed and paid runs are on."""
+    if model_id.endswith(":free"):
+        return model_id
+    if allow_paid and model_id in set(paid_allowlist):
+        return model_id
+    raise PaidModelError(
+        f"{model_id!r} is a paid model: it must be listed in `paid_models` and the run must "
+        "pass --allow-paid-models"
+    )
+
+
 def assert_free(model_id: str) -> str:
     if not model_id.endswith(":free"):
         raise PaidModelError(
@@ -69,14 +82,20 @@ def build_chat_model(
     counter: RequestCounter,
     *,
     requests_per_minute: float = 15.0,
-    max_retries: int = 6,
-    timeout: float = 180.0,
+    max_retries: int = 2,
+    timeout: float = 90.0,
     max_tokens: int = 4096,
     temperature: float = 0.0,
+    paid_ok: bool = False,
 ) -> Any:
+    """``timeout`` is a hard per-request limit (httpx applies it to connect and to every
+    read); with ``max_retries`` a single model call cannot block much longer than
+    ``timeout * (max_retries + 1)``. ``paid_ok`` is set by the caller after
+    :func:`assert_allowed`."""
     from langchain_openai import ChatOpenAI
 
-    assert_free(model_id)
+    if not paid_ok:
+        assert_free(model_id)
     api_key = os.environ.get(KEY_ENV)
     if not api_key:
         raise RuntimeError(f"{KEY_ENV} is not set")
@@ -92,7 +111,16 @@ def build_chat_model(
         http_client=http_client,
         rate_limiter=rate_limiter(requests_per_minute),
         default_headers={"X-Title": "ToolDiscoveryBench harness"},
+        # ask OpenRouter to report the billed cost of each call in ``usage.cost``
+        extra_body={"usage": {"include": True}},
     )
+
+
+def call_cost(message: Any) -> float | None:
+    """OpenRouter's billed cost (USD) of the call that produced ``message``, if reported."""
+    meta = getattr(message, "response_metadata", None) or {}
+    cost = (meta.get("token_usage") or {}).get("cost")
+    return float(cost) if isinstance(cost, int | float) else None
 
 
 def free_quota(timeout: float = 20.0) -> dict[str, Any]:
