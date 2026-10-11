@@ -27,7 +27,9 @@ SKILL_SOURCES = ["/skills/"]
 # deepagents built-ins hidden from the model: write/exec tools make no sense here, and in a
 # smoke run free models answered "start my dev server" by exploring the (skills-only)
 # filesystem with ls/glob until the step cap. read_file stays: skills need it.
-EXCLUDED_BUILTINS = frozenset({"write_file", "edit_file", "execute", "task", "ls", "glob", "grep"})
+EXCLUDED_BUILTINS = frozenset(
+    {"write_file", "edit_file", "delete", "execute", "task", "ls", "glob", "grep"}
+)
 NO_TOOL = "NO_TOOL"
 SELECTOR_SOURCE = "tool_selection"  # metadata.lc_source of LLMToolSelectorMiddleware calls
 
