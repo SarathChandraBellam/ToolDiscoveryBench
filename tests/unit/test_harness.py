@@ -535,3 +535,76 @@ def test_spend_cap_and_billed_cost(catalog: Any) -> None:
     row = score_row(Q, "all_tools", "paid/model", run)
     assert row["agent_cost_usd"] == pytest.approx(0.004) == row["cost_usd"]
     assert row["router_cost_usd"] is None
+
+
+# ------------------------------------------------------------ multi-step, selector setup
+def test_multistep_tasks_use_catalog_tools_in_sequence(catalog: Any) -> None:
+    from tooldiscoverybench.harness.multistep import multistep_tasks
+
+    tasks = multistep_tasks()
+    assert 15 <= len(tasks) <= 20
+    for t in tasks:
+        assert 2 <= len(t["gold"]) <= 3 and len(set(t["gold"])) == len(t["gold"])
+        assert all(g in catalog.by_id for g in t["gold"])
+
+
+def test_multistep_scoring(catalog: Any) -> None:
+    from tooldiscoverybench.harness.runner import score_multistep
+
+    q = {
+        "qid": "ms-x",
+        "question": "resolve then query",
+        "gold": ["context7.resolve-library-id", "context7.query-docs"],
+        "no_tool": False,
+    }
+    options = RouterOptions(multi_step=True)
+
+    def run(*names: str) -> dict[str, Any]:
+        msgs = [call(n, {}, i) for i, n in enumerate(names)] + [AIMessage("done")]
+        r = run_agent(scripted(*msgs), q["question"], "all_tools", catalog, options=options)
+        return score_multistep(q, "all_tools", "fake:free", r)
+
+    good = run("context7__resolve-library-id", "context7__query-docs")
+    assert good["top1_correct"] and good["gold_ever_called"] and good["order_correct"]
+    assert good["steps_correct"] == 2 and good["wasted_real_calls"] == 0
+    swapped = run("context7__query-docs", "context7__resolve-library-id")
+    assert swapped["gold_ever_called"] and not swapped["order_correct"]
+    assert not swapped["top1_correct"] and swapped["steps_correct"] == 0
+    extra = run("context7__resolve-library-id", "kiwi__search-flight", "context7__query-docs")
+    assert (
+        extra["order_correct"] and extra["wasted_real_calls"] == 1 and extra["steps_correct"] == 1
+    )
+    half = run("context7__resolve-library-id")
+    assert half["top1_correct"] and not half["gold_ever_called"] and not half["order_correct"]
+    assert half["gold_tools_called"] == 1
+
+
+def test_langchain_selector_calls_are_counted(catalog: Any) -> None:
+    """LLMToolSelectorMiddleware re-selects before every model call; each is a router call."""
+
+    class SelectorModel(ScriptedModel):
+        def with_structured_output(self, schema: Any, **kwargs: Any) -> Any:
+            from langchain_core.runnables import RunnableLambda
+
+            pick = {"tools": ["astro-docs__search_astro_docs"]}
+            return self | RunnableLambda(lambda _msg: pick)
+
+    msgs = [
+        AIMessage("selection 1"),
+        call("astro-docs__search_astro_docs", {"query": "x"}, 0),
+        AIMessage("selection 2"),
+        AIMessage("done"),
+    ]
+    for m in msgs:
+        m.response_metadata = {"token_usage": {"cost": 0.001}}
+    model = SelectorModel(messages=iter(msgs))
+    for m in msgs:
+        m.usage_metadata = {"input_tokens": 100, "output_tokens": 10, "total_tokens": 110}
+    run = run_agent(model, Q["question"], "langchain_selector", catalog, selector_model=model)
+    row = score_row(Q, "langchain_selector", "paid/model", run)
+    assert row["top1_correct"] and row["agent_llm_calls"] == 2
+    assert row["selector_calls"] == 2 == row["router_calls"] == row["router_llm_calls"]
+    assert row["llm_calls"] == 4 and row["input_tokens"] == 400
+    assert len(row["router_call_latencies_ms"]) == 2
+    assert row["router_cost_usd"] == pytest.approx(0.002)
+    assert row["cost_usd"] == pytest.approx(0.004)

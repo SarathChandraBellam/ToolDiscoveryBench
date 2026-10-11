@@ -77,10 +77,17 @@ def score_row(q: dict[str, Any], setup: str, model_id: str, run: AgentRun) -> di
     u = run.usage
     events = run.router_events
     routed = [e for e in events if e["source"] == "user_message"]
-    router_llm = sum(int(e.get("llm_calls") or 0) for e in events)
-    router_in = sum(int(e.get("input_tokens") or 0) for e in events)
-    router_out = sum(int(e.get("output_tokens") or 0) for e in events)
+    # router calls (ToolRouterMiddleware events) and LangChain selector calls are reported
+    # together as "router"; a setup has one or the other
+    router_llm = sum(int(e.get("llm_calls") or 0) for e in events) + u.selector_calls
+    router_in = sum(int(e.get("input_tokens") or 0) for e in events) + u.selector_input_tokens
+    router_out = sum(int(e.get("output_tokens") or 0) for e in events) + u.selector_output_tokens
     costs = [e["cost_usd"] for e in events if e.get("cost_usd") is not None]
+    if u.selector_calls:
+        costs.append(u.selector_cost_usd)
+    router_latencies = [e["latency_ms"] for e in events] + [
+        round(ms, 1) for ms in u.selector_latencies_ms
+    ]
     # tool-call efficiency: positions are 1-based over ALL tool calls (discovery + real)
     all_calls = run.log.calls
     gold_pos = next(
@@ -120,10 +127,11 @@ def score_row(q: dict[str, Any], setup: str, model_id: str, run: AgentRun) -> di
         "router_input_tokens": router_in,
         "router_output_tokens": router_out,
         "latency_ms": round(run.latency_ms, 1),  # wall time of the turn, router included
-        "router_latency_ms": round(sum(e["latency_ms"] for e in events), 1),
-        # one entry per router call (new user message or request_tools)
-        "router_calls": len(events),
-        "router_call_latencies_ms": [e["latency_ms"] for e in events],
+        "router_latency_ms": round(sum(router_latencies), 1),
+        # one entry per router call (new user message or request_tools) or selector call
+        "router_calls": len(events) + u.selector_calls,
+        "router_call_latencies_ms": router_latencies,
+        "selector_calls": u.selector_calls,
         "request_tools_calls": sum(e["source"] == "request_tools" for e in events),
         "router_cost_usd": round(sum(costs), 8) if costs else None,
         # OpenRouter-billed cost: the agent's own calls, and agent + router
@@ -159,6 +167,37 @@ def score_row(q: dict[str, Any], setup: str, model_id: str, run: AgentRun) -> di
             fallback_used=len(searches) > 0,
             router_events=events,
         )
+    return row
+
+
+def score_multistep(q: dict[str, Any], setup: str, model_id: str, run: AgentRun) -> dict[str, Any]:
+    """Row for a multi-step task: ``q["gold"]`` is the ordered tool sequence.
+
+    ``top1_correct``: the first real call is the first gold tool. ``gold_ever_called``: every
+    gold tool was called. ``order_correct``: every gold tool was called and their first
+    calls are in the gold order. ``wasted_real_calls``: real calls beyond one per gold tool
+    (calls to other tools, and repeats). ``steps_correct``: positions where the k-th
+    distinct tool called is the k-th gold tool.
+    """
+    row = score_row(q, setup, model_id, run)
+    gold = list(q["gold"])
+    called = [c.tool_id for c in run.log.real_calls()]
+    distinct = list(dict.fromkeys(called))
+    hit = [g for g in gold if g in called]
+    firsts = [called.index(g) for g in hit]
+    all_called = len(hit) == len(gold)
+    row.update(
+        gold_sequence=gold,
+        n_steps=len(gold),
+        top1_correct=bool(called) and called[0] == gold[0],
+        gold_ever_called=all_called,
+        gold_tools_called=len(hit),
+        order_correct=all_called and firsts == sorted(firsts),
+        steps_correct=sum(a == b for a, b in zip(distinct, gold, strict=False)),
+        wasted_real_calls=len(called) - len(hit),
+        ended_with_gold=bool(called) and called[-1] == gold[-1],
+        calls_to_gold=None,
+    )
     return row
 
 
@@ -259,6 +298,7 @@ def run_conversation_cell(
     out_path: Path,
     *,
     router: Any = None,
+    selector_model: Any = None,
     max_model_calls: int = 8,
     options: RouterOptions | None = None,
     task_timeout: float | None = None,
@@ -289,8 +329,9 @@ def run_conversation_cell(
             catalog,
             router,
             max_model_calls,
-            options=options,
-            task_timeout=task_timeout,
+            selector_model,
+            options,
+            task_timeout,
         )
         rows = []
         for t, (turn, run) in enumerate(zip(conv["turns"], runs, strict=True), 1):
@@ -326,19 +367,28 @@ class SpendCap:
     written. A task only starts if the most expensive task seen so far would still fit.
     """
 
-    def __init__(self, max_usd: float, spent: float = 0.0) -> None:
+    def __init__(
+        self, max_usd: float, spent: float = 0.0, max_own_usd: float | None = None
+    ) -> None:
         self.max_usd = max_usd
         self.spent = spent
+        self.max_own_usd = max_own_usd  # allowance of this process (for runs in parallel)
+        self.own = 0.0
         self.worst_task = 0.0
 
     def add(self, cost: float) -> None:
         self.spent += cost
+        self.own += cost
         self.worst_task = max(self.worst_task, cost)
 
     def check(self, what: str, tasks: int = 1) -> None:
-        if self.spent + self.worst_task * tasks > self.max_usd:
+        ahead = self.worst_task * tasks
+        over_own = self.max_own_usd is not None and self.own + ahead > self.max_own_usd
+        if self.spent + ahead > self.max_usd or over_own:
             raise BudgetExhaustedError(
-                f"stopping before {what}: paid spend ${self.spent:.4f}, cap ${self.max_usd:.2f}"
+                f"stopping before {what}: paid spend ${self.spent:.4f} (this run "
+                f"${self.own:.4f}), cap ${self.max_usd:.2f}"
+                + (f", run allowance ${self.max_own_usd:.2f}" if over_own else "")
             )
 
 
@@ -371,6 +421,7 @@ def run_cell(
     retry_errors: bool = False,
     task_timeout: float | None = None,
     spend: SpendCap | None = None,
+    scorer: Callable[..., dict[str, Any]] | None = None,
     budget_left: Callable[[], int] | None = None,
     reserve_per_question: int = 12,
     log: Callable[[str], None] = print,
@@ -397,7 +448,7 @@ def run_cell(
             options,
             task_timeout,
         )
-        row = score_row(q, setup, model_id, run)
+        row = (scorer or score_row)(q, setup, model_id, run)
         if spend is not None:
             spend.add(row["cost_usd"])
         with out_path.open("a") as fh:

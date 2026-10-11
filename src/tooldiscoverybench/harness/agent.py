@@ -13,7 +13,14 @@ from langchain_core.callbacks import BaseCallbackHandler
 from tooldiscoverybench.harness.middleware import DeferredToolsMiddleware, ToolRouterMiddleware
 from tooldiscoverybench.harness.models import call_cost
 from tooldiscoverybench.harness.routing import ROUTER_SOURCE, BudgetExhaustedError
-from tooldiscoverybench.harness.tools import REQUEST_TOOL, SEARCH_TOOL, CallLog, Catalog
+from tooldiscoverybench.harness.tools import (
+    MULTISTEP_STUB_RESULT,
+    REQUEST_TOOL,
+    SEARCH_TOOL,
+    STUB_RESULT,
+    CallLog,
+    Catalog,
+)
 
 WORKSPACE = Path(__file__).parent / "workspace"
 SKILL_SOURCES = ["/skills/"]
@@ -22,7 +29,7 @@ SKILL_SOURCES = ["/skills/"]
 # filesystem with ls/glob until the step cap. read_file stays: skills need it.
 EXCLUDED_BUILTINS = frozenset({"write_file", "edit_file", "execute", "task", "ls", "glob", "grep"})
 NO_TOOL = "NO_TOOL"
-ROUTER_SOURCES = {ROUTER_SOURCE, "tool_selection"}  # ours + LangChain's LLMToolSelector
+SELECTOR_SOURCE = "tool_selection"  # metadata.lc_source of LLMToolSelectorMiddleware calls
 
 #: setup -> how catalog tools are exposed
 SETUP_KINDS = {
@@ -41,6 +48,14 @@ BASE_PROMPT = (
     "right tool, stop and give a one-line final answer. If no available integration tool can "
     "handle the request (it needs an action, account or service none of them provides), call "
     f"no integration tool and reply exactly {NO_TOOL}."
+)
+MULTISTEP_PROMPT = (
+    "You are a developer assistant agent. Use your tools to carry out the user's request; do "
+    "not answer from memory when a tool can help. A request may need several different "
+    "integration tools one after another: call each one it needs, in the order the request "
+    "asks for, one tool call at a time, then give a one-line final answer. Integration tools "
+    "in this environment are stubs that return a short placeholder result; treat each call as "
+    "successful and move on to the next step. Do not call a tool the request does not need."
 )
 _SEARCH_HINT = (
     "Integration tools (documentation search for Astro, Svelte, AWS, Microsoft Learn, "
@@ -82,6 +97,7 @@ class RouterOptions:
     search_fallback: bool = True  # keep BM25 tool_search as the last resort
     carry: str = "cap"  # tools loaded in earlier turns: cap | keep | replace
     carry_cap: int = 5
+    multi_step: bool = False  # multi-step workflow: other base prompt and stub result text
 
 
 def system_prompt(setup: str, options: RouterOptions) -> str:
@@ -93,7 +109,7 @@ def system_prompt(setup: str, options: RouterOptions) -> str:
             text += _REQUEST_HINT
             if options.search_fallback:
                 text += f" Use `{SEARCH_TOOL}` only if that does not help."
-    return f"{BASE_PROMPT}\n\n{text}"
+    return f"{MULTISTEP_PROMPT if options.multi_step else BASE_PROMPT}\n\n{text}"
 
 
 class UsageCounter(BaseCallbackHandler):
@@ -103,11 +119,20 @@ class UsageCounter(BaseCallbackHandler):
         self.calls = self.input_tokens = self.output_tokens = 0
         self.router_calls = self.router_input_tokens = self.router_output_tokens = 0
         self.errors = 0
+        # LangChain's LLMToolSelectorMiddleware: its calls are counted like router calls
+        self.selector_calls = self.selector_input_tokens = self.selector_output_tokens = 0
+        self.selector_cost_usd = 0.0
+        self.selector_latencies_ms: list[float] = []
+        self._selector_started: dict[Any, float] = {}
         self.cost_usd = 0.0  # OpenRouter-billed cost of the agent's own model calls
         self._router_runs: set[Any] = set()
 
     def on_chat_model_start(self, serialized: Any, messages: Any, **kwargs: Any) -> None:
-        if (kwargs.get("metadata") or {}).get("lc_source") in ROUTER_SOURCES:
+        source = (kwargs.get("metadata") or {}).get("lc_source")
+        if source == SELECTOR_SOURCE:
+            self.selector_calls += 1
+            self._selector_started[kwargs.get("run_id")] = time.perf_counter()
+        elif source == ROUTER_SOURCE:
             self.router_calls += 1
             self._router_runs.add(kwargs.get("run_id"))
         else:
@@ -115,6 +140,9 @@ class UsageCounter(BaseCallbackHandler):
 
     def on_llm_end(self, response: Any, **kwargs: Any) -> None:
         router = kwargs.get("run_id") in self._router_runs
+        started = self._selector_started.pop(kwargs.get("run_id"), None)
+        if started is not None:
+            self.selector_latencies_ms.append((time.perf_counter() - started) * 1000)
         for gens in response.generations:
             for gen in gens:
                 usage = getattr(getattr(gen, "message", None), "usage_metadata", None) or {}
@@ -122,7 +150,11 @@ class UsageCounter(BaseCallbackHandler):
                     int(usage.get("input_tokens", 0) or 0),
                     int(usage.get("output_tokens", 0) or 0),
                 )
-                if router:
+                if started is not None:
+                    self.selector_input_tokens += i
+                    self.selector_output_tokens += o
+                    self.selector_cost_usd += call_cost(getattr(gen, "message", None)) or 0.0
+                elif router:
                     self.router_input_tokens += i
                     self.router_output_tokens += o
                 else:
@@ -197,10 +229,21 @@ def discovery_middleware(
     if kind == "langchain_selector":
         from langchain.agents.middleware import LLMToolSelectorMiddleware
 
-        builtins = ["read_file", "write_todos"]
-        return LLMToolSelectorMiddleware(
-            model=selector_model, max_tools=k, always_include=builtins, on_parsing_failure="none"
-        )
+        catalog_names = set(catalog.names)
+
+        class CatalogToolSelector(LLMToolSelectorMiddleware):  # type: ignore[type-arg]
+            """LangChain's selector, unchanged, choosing among the catalog tools only: the
+            agent's own built-ins (read_file for skills, write_todos, ...) are always kept."""
+
+            def _prepare_selection_request(self, request: Any) -> Any:
+                self.always_include = [
+                    t.name
+                    for t in request.tools
+                    if not isinstance(t, dict) and t.name not in catalog_names
+                ]
+                return super()._prepare_selection_request(request)
+
+        return CatalogToolSelector(model=selector_model, max_tools=k, on_parsing_failure="none")
     raise ValueError(setup)
 
 
@@ -269,7 +312,9 @@ def run_conversation(  # noqa: PLR0912, PLR0915 - one linear loop over turns
     options = options or RouterOptions()
     log = CallLog()
     kind = SETUP_KINDS[setup]
-    tools: list[Any] = catalog.stubs(log)
+    tools: list[Any] = catalog.stubs(
+        log, MULTISTEP_STUB_RESULT if options.multi_step else STUB_RESULT
+    )
     if kind.startswith("search:") or (kind == "router" and options.search_fallback):
         variant = kind.split(":", 1)[1] if kind.startswith("search:") else "bm25"
         tools.append(catalog.search_tool(variant, log))

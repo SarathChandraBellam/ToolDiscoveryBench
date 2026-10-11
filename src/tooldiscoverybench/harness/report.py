@@ -59,15 +59,33 @@ COMPARISON = [
     ("top1", "first call correct"),
     ("gold_ever", "gold reached"),
     ("abstain", "correct abstention"),
-    ("tool_calls", "tool calls/task"),
-    ("llm_calls", "LLM calls/task"),
+    ("tool_calls", "tool calls/task (discovery + real)"),
+    ("wasted", "wasted real calls/task"),
+    ("llm_calls", "LLM calls/task (of which router/selector)"),
     ("in_tok", "input tok/task"),
-    ("router_calls", "router calls/task"),
-    ("router_tok", "router input tok/task"),
-    ("router_lat", "router latency per call s (mean / p50 / p90)"),
+    ("out_tok", "output tok/task"),
+    ("router_lat", "router/selector latency per call s (mean / p50 / p90)"),
     ("latency", "task latency s (mean / p50 / p90)"),
-    ("router_cost", "router cost $/task"),
-    ("cost", "total cost $/task (agent + router)"),
+    ("router_cost", "router/selector cost $/task"),
+    ("cost", "billed cost $/task (agent + router)"),
+]
+MULTISTEP = [
+    ("setup", "setup"),
+    ("model", "model"),
+    ("n", "tasks"),
+    ("errors", "errors"),
+    ("top1", "first call = first gold tool"),
+    ("all_gold", "all gold tools called"),
+    ("order", "all called, in order"),
+    ("steps", "steps correct"),
+    ("tool_calls", "tool calls/task (discovery + real)"),
+    ("wasted", "wasted real calls/task"),
+    ("llm_calls", "LLM calls/task (of which router/selector)"),
+    ("in_tok", "input tok/task"),
+    ("out_tok", "output tok/task"),
+    ("router_lat", "router/selector latency per call s (mean / p50 / p90)"),
+    ("latency", "task latency s (mean / p50 / p90)"),
+    ("cost", "billed cost $/task (agent + router)"),
 ]
 PER_TURN = [
     ("setup", "setup"),
@@ -178,11 +196,14 @@ def _comparison(setup: str, model: str, rs: list[dict[str, Any]]) -> dict[str, s
         "top1": _rate([bool(r["top1_correct"]) for r in ans]),
         "gold_ever": _rate([bool(r["gold_ever_called"]) for r in ans]),
         "abstain": _rate([bool(r["top1_correct"]) for r in nt]),
-        "tool_calls": _mean([r["total_tool_calls"] for r in ok]),
-        "llm_calls": _mean([r["llm_calls"] for r in ok]),
+        "tool_calls": _mean([r["total_tool_calls"] for r in ok])
+        + f" ({_mean([r.get('discovery_calls', 0) + r.get('request_tools_calls', 0) for r in ok])}"
+        f" + {_mean([r.get('real_tool_calls', 0) for r in ok])})",
+        "wasted": _mean([r.get("wasted_real_calls", 0) for r in ok]),
+        "llm_calls": _mean([r["llm_calls"] for r in ok])
+        + f" ({_mean([r.get('router_llm_calls', 0) for r in ok])})",
         "in_tok": _mean([r["input_tokens"] for r in ok], "{:,.0f}"),
-        "router_calls": _mean([_router_calls(r) for r in ok]),
-        "router_tok": _mean([r.get("router_input_tokens", 0) for r in ok], "{:,.0f}"),
+        "out_tok": _mean([r["output_tokens"] for r in ok], "{:,.0f}"),
         "router_lat": _dist(_router_latencies(ok), "{:.2f}"),
         "latency": _dist([r["latency_ms"] / 1000 for r in ok]),
         "router_cost": _cost(ok),
@@ -493,4 +514,49 @@ def write_multiturn_summary(out_dir: Path, turn_keys: list[str], meta: dict[str,
         lines += ["", "Incomplete cells (not in the tables):", *[f"- {p}" for p in partial]]
     text = "\n".join(lines) + "\n"
     (out_dir / "multiturn_summary.md").write_text(text)
+    return text
+
+
+# ------------------------------------------------------------------ multi-step suite
+def _multistep(setup: str, model: str, rs: list[dict[str, Any]]) -> dict[str, str]:
+    base = _comparison(setup, model, rs)
+    steps = sum(r["n_steps"] for r in rs)
+    done = sum(r["steps_correct"] for r in rs)
+    return {
+        **base,
+        "all_gold": _rate([bool(r["gold_ever_called"]) for r in rs]),
+        "order": _rate([bool(r["order_correct"]) for r in rs]),
+        "steps": f"{done / steps:.2f} ({done}/{steps})" if steps else "–",
+    }
+
+
+def write_multistep_summary(out_dir: Path, qids: list[str], meta: dict[str, Any]) -> str:
+    """``multistep_summary.md`` + csv over complete (setup, model) cells of the suite."""
+    rows = load_results(out_dir / "multistep_results.jsonl")
+    cells, partial = complete_cells(rows, qids)
+    table = [_multistep(s, m, rs) for (s, m), rs in cells.items()]
+    with (out_dir / "multistep_comparison.csv").open("w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=[k for k, _ in MULTISTEP], extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(table)
+    lines = [
+        "# deepagents harness: multi-step suite",
+        "",
+        f"{len(qids)} hand-written tasks; each is ONE user request that needs 2-3 different "
+        "catalog tools in a stated order (gold = that tool sequence, author-labelled, not "
+        f"harness-derived). Step cap {meta.get('max_model_calls', 8)} model calls. Router "
+        f"setups: {meta.get('router_options', '')}.",
+        "",
+        "`all gold tools called`: every tool of the sequence was called. `in order`: and "
+        "their first calls follow the gold order. `steps correct`: positions where the k-th "
+        "distinct tool called is the k-th gold tool. `wasted`: real calls beyond one per "
+        "gold tool. Error rows count as wrong and are left out of cost means. Only complete "
+        "(setup, model) cells are shown.",
+        "",
+        *_md(MULTISTEP, table),
+    ]
+    if partial:
+        lines += ["", "Incomplete cells (not in the tables):", *[f"- {p}" for p in partial]]
+    text = "\n".join(lines) + "\n"
+    (out_dir / "multistep_summary.md").write_text(text)
     return text

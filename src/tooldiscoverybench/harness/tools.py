@@ -38,6 +38,12 @@ REQUEST_TOOL = "request_tools"
 DEFAULT_LIMIT = 5
 MAX_REGEX_CHARS = 200
 MAX_QUERY_CHARS = 500
+#: multi-step workflow: the stub must not tell the model to stop after the first tool
+MULTISTEP_STUB_RESULT = (
+    "[stub] {tool_id} executed. This benchmark does not run real tools; assume the call "
+    "succeeded and returned the information requested. Continue with the next step of the "
+    "request if there is one, otherwise give your final answer."
+)
 STUB_RESULT = (
     "[stub] {tool_id} executed. This benchmark does not run real tools; assume the call "
     "succeeded and returned the information requested. Give your final answer now."
@@ -102,10 +108,10 @@ class Catalog:
         return self.by_name.get(name) or self.by_id.get(name)
 
     # ------------------------------------------------------------------ stubs
-    def stub(self, tool: Tool, log: CallLog) -> BaseTool:
+    def stub(self, tool: Tool, log: CallLog, result: str = STUB_RESULT) -> BaseTool:
         def run(**kwargs: Any) -> str:
             log.calls.append(ToolCall(tool.id, "direct", kwargs))
-            return STUB_RESULT.format(tool_id=tool.id)
+            return result.format(tool_id=tool.id)
 
         return StructuredTool.from_function(
             func=run,
@@ -115,8 +121,8 @@ class Catalog:
             infer_schema=False,
         )
 
-    def stubs(self, log: CallLog) -> list[BaseTool]:
-        return [self.stub(t, log) for t in self.tools]
+    def stubs(self, log: CallLog, result: str = STUB_RESULT) -> list[BaseTool]:
+        return [self.stub(t, log, result) for t in self.tools]
 
     # ----------------------------------------------------------------- search
     def regex_search(self, pattern: str, limit: int = DEFAULT_LIMIT) -> list[str]:

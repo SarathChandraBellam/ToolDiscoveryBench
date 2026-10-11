@@ -19,7 +19,12 @@ from tooldiscoverybench.harness.models import (
     build_chat_model,
     free_quota,
 )
-from tooldiscoverybench.harness.report import write_multiturn_summary, write_summary
+from tooldiscoverybench.harness.multistep import multistep_tasks
+from tooldiscoverybench.harness.report import (
+    write_multistep_summary,
+    write_multiturn_summary,
+    write_summary,
+)
 from tooldiscoverybench.harness.routing import (
     BM25ShortlistRouter,
     BudgetExhaustedError,
@@ -34,6 +39,7 @@ from tooldiscoverybench.harness.runner import (
     run_cell,
     run_conversation_cell,
     sample_questions,
+    score_multistep,
 )
 
 DEFAULTS: dict[str, Any] = {
@@ -58,7 +64,8 @@ DEFAULTS: dict[str, Any] = {
     "search_fallback": True,
     "carry": "cap",  # tools loaded in earlier turns: cap | keep | replace
     "carry_cap": 5,
-    "suite": "single",  # single | multiturn
+    "suite": "single",  # single | multiturn | multistep
+    "max_own_spend_usd": None,  # paid allowance of one process when several run in parallel
     "multiturn": {
         "request_tools": True,
         "n_same_server": 5,
@@ -90,7 +97,9 @@ def parse_args(argv: list[str] | None) -> dict[str, Any]:
         default=None,
         help="permit router=jev (paid). Needs the owner's approval.",
     )
-    p.add_argument("--suite", choices=["single", "multiturn"])
+    p.add_argument("--suite", choices=["single", "multiturn", "multistep"])
+    p.add_argument("--max-own-spend-usd", type=float, help="paid allowance of this process")
+    p.add_argument("--request-tools", action="store_true", default=None)
     p.add_argument(
         "--allow-paid-models",
         action="store_true",
@@ -124,34 +133,45 @@ def parse_args(argv: list[str] | None) -> dict[str, Any]:
     return cfg
 
 
-def paid_spend(out: Path, since: str = "", models: Any = None) -> float:
-    """Recorded paid spend (agent + router) in this out dir, optionally only rows from
-    ``since`` on and only for ``models`` (so parallel runs of different models each keep
-    their own share of a budget)."""
-    rows = load_results(out / "results.jsonl") + load_results(out / "multiturn_results.jsonl")
+RESULT_FILES = {
+    "single": "results.jsonl",
+    "multiturn": "multiturn_results.jsonl",
+    "multistep": "multistep_results.jsonl",
+}
+
+
+def all_rows(out: Path) -> list[dict[str, Any]]:
+    return [r for name in RESULT_FILES.values() for r in load_results(out / name)]
+
+
+def paid_spend(out: Path, since: str = "") -> float:
+    """Recorded paid spend (agent + router/selector) in this out dir from ``since`` on."""
     return sum(
         float(r.get("cost_usd", r.get("router_cost_usd")) or 0)
-        for r in rows
-        if r.get("ts", "") >= since and (models is None or r["model"] in models)
+        for r in all_rows(out)
+        if r.get("ts", "") >= since
     )
 
 
 def jev_spend(out: Path) -> float:
     """Jev cost already recorded in this out dir (every row ever written, reruns included)."""
-    rows = load_results(out / "results.jsonl") + load_results(out / "multiturn_results.jsonl")
-    return sum(float(r.get("router_cost_usd") or 0) for r in rows)
+    return sum(
+        float(r.get("router_cost_usd") or 0)
+        for r in all_rows(out)
+        if str(r.get("router_label", "")).startswith("Jev")
+    )
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - linear CLI entry point
+def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - linear CLI entry
     cfg = parse_args(argv)
     out = Path(cfg["out"])
     out.mkdir(parents=True, exist_ok=True)
     catalog = load_harness_catalog()
-    multi = cfg["suite"] == "multiturn"
+    suite = cfg["suite"]
     mt = cfg["multiturn"]
     questions = sample_questions(cfg["n_per_server"], cfg["n_no_tool"], cfg["seed"])
     conversations: list[dict[str, Any]] = []
-    if multi:
+    if suite == "multiturn":
         # questions of the single-turn sample are not reused
         conversations = build_conversations(
             mt["n_same_server"],
@@ -163,14 +183,18 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - line
         )
         if cfg.get("limit"):
             conversations = conversations[: cfg["limit"]]
-    elif cfg.get("limit"):
-        questions = questions[: cfg["limit"]]
+    else:
+        if suite == "multistep":
+            questions = multistep_tasks()
+        if cfg.get("limit"):
+            questions = questions[: cfg["limit"]]
     qids = [q["qid"] for q in questions]
     options = RouterOptions(
-        request_tools=bool(mt["request_tools"] if multi else cfg["request_tools"]),
+        request_tools=bool(mt["request_tools"] if suite == "multiturn" else cfg["request_tools"]),
         search_fallback=bool(cfg["search_fallback"]),
         carry=str(cfg["carry"]),
         carry_cap=int(cfg["carry_cap"]),
+        multi_step=suite == "multistep",
     )
     router_label = {
         "free_llm": f"free-model router ({cfg['router_model']}), top-{cfg['router_k']}",
@@ -188,29 +212,32 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - line
         f"top-{cfg['router_k']}",
         "models": cfg["models"],
         "setups": cfg["setups"],
-    }
-    turn_keys = [
-        f"{c['conv_id']}#t{t}" for c in conversations for t in range(1, len(c["turns"]) + 1)
-    ]
-    kinds = sorted({c["kind"] for c in conversations})
-    mt_meta = {
-        **meta,
-        "n_conversations": len(conversations),
-        "kinds": ", ".join(f"{sum(c['kind'] == k for c in conversations)} {k}" for k in kinds),
         "router_options": f"a router call on every new user message, request_tools "
         f"{'on' if options.request_tools else 'off'}, tool_search fallback "
         f"{'on' if options.search_fallback else 'off'}, carry={options.carry}"
         + (f" (last {options.carry_cap})" if options.carry == "cap" else ""),
     }
+    turn_keys = [
+        f"{c['conv_id']}#t{t}" for c in conversations for t in range(1, len(c["turns"]) + 1)
+    ]
+    kinds = sorted({c["kind"] for c in conversations})
+    meta["n_conversations"] = len(conversations)
+    meta["kinds"] = ", ".join(f"{sum(c['kind'] == k for c in conversations)} {k}" for k in kinds)
 
     def summary() -> str:
-        if multi:
-            return write_multiturn_summary(out, turn_keys, mt_meta)
+        if suite == "multiturn":
+            return write_multiturn_summary(out, turn_keys, meta)
+        if suite == "multistep":
+            return write_multistep_summary(out, qids, meta)
         return write_summary(out, qids, meta)
 
-    if multi:
+    if suite == "multiturn":
         (out / "multiturn_sample.json").write_text(
-            json.dumps({**mt_meta, "conversations": conversations}, indent=1)
+            json.dumps({**meta, "conversations": conversations}, indent=1)
+        )
+    elif suite == "multistep":
+        (out / "multistep_sample.json").write_text(
+            json.dumps({**meta, "tasks": questions}, indent=1)
         )
     else:
         (out / "sample.json").write_text(json.dumps({"qids": qids, **meta}, indent=1))
@@ -223,17 +250,20 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - line
     counter = RequestCounter()  # requests to FREE models only: they draw on the daily quota
     paid_counter = RequestCounter()
     spend = SpendCap(
-        float(cfg["max_spend_usd"]), paid_spend(out, str(cfg["spend_since"]), set(cfg["models"]))
+        float(cfg["max_spend_usd"]),
+        paid_spend(out, str(cfg["spend_since"])),
+        cfg["max_own_spend_usd"],
     )
     print(
-        f"paid spend recorded so far for {cfg['models']}: ${spend.spent:.4f} "
-        f"(cap ${spend.max_usd})",
+        f"paid spend recorded since {cfg['spend_since'] or 'the start'}: ${spend.spent:.4f} "
+        f"(cap ${spend.max_usd}, this run's allowance {spend.max_own_usd})",
         flush=True,
     )
     call_timeout, task_timeout = float(cfg["call_timeout_s"]), float(cfg["task_timeout_s"])
-    quota = free_quota()
-    print(f"free-model quota at start: {quota}", flush=True)
-    state = {"remaining": int(quota.get("remaining") or 0), "at": 0}
+    uses_free = any(m.endswith(":free") for m in cfg["models"]) or (
+        cfg["router"] == "free_llm" and "router_first" in cfg["setups"]
+    )
+    state = {"remaining": 0, "at": 0}
 
     def refresh_quota() -> None:
         q = free_quota()
@@ -245,7 +275,6 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - line
         return state["remaining"] - (counter.count - state["at"]) - int(cfg["quota_reserve"])
 
     rpm = float(cfg["requests_per_minute"])
-    selector_model = None
     jev: JevDecisionRouter | None = None
     if cfg["router"] == "jev" or "router_first_jev" in cfg["setups"]:
         jev = JevDecisionRouter(
@@ -258,21 +287,20 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - line
             timeout=call_timeout,
         )
         print(f"Jev spend so far in {out}: ${jev.spent_usd:.6f} (cap ${jev.max_spend_usd})")
-    router: Any
+    router: Any = None
     if cfg["router"] == "jev":
         router = jev
     elif cfg["router"] == "bm25":
         router = BM25ShortlistRouter(catalog.server_desc, int(cfg["router_k"]))
-    else:
-        selector_model = build_chat_model(
+    elif "router_first" in cfg["setups"]:
+        router_model = build_chat_model(
             cfg["router_model"],
             counter,
             requests_per_minute=rpm,
             max_tokens=1024,
             timeout=min(60.0, call_timeout),
-            max_retries=2,
         )
-        router = FreeLLMRouter(selector_model, cfg["router_model"], k=int(cfg["router_k"]))
+        router = FreeLLMRouter(router_model, cfg["router_model"], k=int(cfg["router_k"]))
     status = 0
     try:
         for model_id in cfg["models"]:  # one model across every setup before the next
@@ -285,25 +313,28 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - line
                 paid_ok=not free,
             )
             for setup in cfg["setups"]:
-                refresh_quota()
+                if uses_free:
+                    refresh_quota()
                 t0 = time.perf_counter()
-                before = counter.count
-                setup_router = jev if setup == "router_first_jev" else router
-                if multi:
+                common: dict[str, Any] = {
+                    "router": jev if setup == "router_first_jev" else router,
+                    "max_model_calls": int(cfg["max_model_calls"]),
+                    "options": options,
+                    "task_timeout": task_timeout,
+                    "spend": spend,
+                    "budget_left": budget_left if uses_free else None,
+                    "log": lambda s: print(s, flush=True),
+                }
+                if suite == "multiturn":
                     n = run_conversation_cell(
                         setup,
                         model_id,
                         model,
                         conversations,
                         catalog,
-                        out / "multiturn_results.jsonl",
-                        router=setup_router,
-                        max_model_calls=int(cfg["max_model_calls"]),
-                        options=options,
-                        task_timeout=task_timeout,
-                        spend=spend,
-                        budget_left=budget_left,
-                        log=lambda s: print(s, flush=True),
+                        out / RESULT_FILES[suite],
+                        selector_model=model,
+                        **common,
                     )
                 else:
                     n = run_cell(
@@ -312,21 +343,17 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - line
                         model,
                         questions,
                         catalog,
-                        out / "results.jsonl",
-                        router=setup_router,
-                        selector_model=selector_model,
-                        max_model_calls=int(cfg["max_model_calls"]),
-                        options=options,
+                        out / RESULT_FILES[suite],
+                        selector_model=model,  # langchain_selector: the agent model selects
                         retry_errors=bool(cfg.get("retry_errors")),
-                        task_timeout=task_timeout,
-                        spend=spend,
-                        budget_left=budget_left,
-                        log=lambda s: print(s, flush=True),
+                        scorer=score_multistep if suite == "multistep" else None,
+                        **common,
                     )
                 print(
-                    f"== cell {setup}/{model_id}: {n} rows, {counter.count - before} requests, "
+                    f"== cell {suite}/{setup}/{model_id}: {n} rows, "
                     f"{time.perf_counter() - t0:.0f}s; free requests {counter.count}, paid "
-                    f"requests {paid_counter.count}, paid spend ${spend.spent:.4f}"
+                    f"requests {paid_counter.count}, paid spend ${spend.spent:.4f} "
+                    f"(this run ${spend.own:.4f})"
                     + (f"; Jev spend ${jev.spent_usd:.6f} over {jev.calls} calls" if jev else ""),
                     flush=True,
                 )
@@ -335,11 +362,9 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - line
         status = 2
     print(
         f"free requests this run: {counter.count}, paid requests: {paid_counter.count}, "
-        f"recorded paid spend: ${spend.spent:.4f}; quota now: {free_quota()}",
+        f"recorded paid spend: ${spend.spent:.4f} (this run ${spend.own:.4f})",
         flush=True,
     )
-    if jev:
-        print(f"Jev spend recorded in {out}: ${jev_spend(out):.6f}", flush=True)
     print(summary())
     return status
 
