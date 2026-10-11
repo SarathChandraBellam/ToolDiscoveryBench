@@ -531,7 +531,101 @@ uv run --extra deepagents python -m tooldiscoverybench.harness --config configs/
 uv run --extra deepagents python -m tooldiscoverybench.harness --config configs/harness.yaml --summary-only
 ```
 
-<!-- PLAN3_RESULTS -->
+**Results: five methods, three workflows, one paid agent model** (`openai/gpt-6-luna`, run
+2026-10-11; router for `router_first_jev` = Jev `typesafe/jev-1.13`; `request_tools` on,
+`tool_search` fallback on; selector for `langchain_selector` = the agent model, `max_tools=3`).
+Rates are `mean (count/n)`; costs are OpenRouter's billed cost. Only complete cells. One
+model and small samples: differences of one or two tasks are noise.
+
+#### A. single_turn (48 questions: 40 answerable, 8 no-tool)
+
+| setup | tasks | errors | first call correct | gold reached | correct abstention | tool calls/task (discovery + real) | wasted real calls/task | LLM calls/task (of which router/selector) | input tok/task | output tok/task | router/selector latency per call s (mean / p50 / p90) | task latency s (mean / p50 / p90) | router/selector cost $/task | billed cost $/task (agent + router) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| all_tools | 48 | 0 | 0.70 (28/40) | 0.72 (29/40) | 1.00 (8/8) | 0.71 (0.00 + 0.71) | 0.04 | 3.67 (0.00) | 39,053 | 187 | – | 11.5 / 6.2 / 16.4 | – | 0.000570 |
+| bm25_search | 48 | 0 | 0.72 (29/40) | 0.72 (29/40) | 1.00 (8/8) | 2.69 (1.96 + 0.73) | 0.06 | 4.21 (0.00) | 12,329 | 229 | – | 10.0 / 7.0 / 13.2 | – | 0.000693 |
+| regex_search | 48 | 0 | 0.55 (22/40) | 0.55 (22/40) | 1.00 (8/8) | 3.10 (2.58 + 0.52) | 0.06 | 4.94 (0.00) | 9,663 | 240 | – | 10.6 / 8.4 / 14.0 | – | 0.000417 |
+| langchain_selector | 48 | 1 | 0.88 (35/40) | 0.95 (38/40) | 1.00 (8/8) | 0.91 (0.00 + 0.91) | 0.09 | 4.98 (2.49) | 17,562 | 321 | 3.35 / 2.21 / 3.32 | 14.2 / 9.8 / 15.1 | 0.000227 | 0.000436 |
+| router_first_jev | 48 | 0 | 0.82 (33/40) | 0.88 (35/40) | 0.88 (7/8) | 1.88 (0.98 + 0.90) | 0.15 | 4.79 (1.35) | 13,621 | 186 | 0.19 / 0.17 / 0.24 | 8.1 / 6.1 / 8.7 | 0.000139 | 0.000779 |
+
+#### B. multi_turn (15 conversations, 32 turns; a task is one turn)
+
+| setup | tasks | errors | first call correct | gold reached | correct abstention | tool calls/task (discovery + real) | wasted real calls/task | LLM calls/task (of which router/selector) | input tok/task | output tok/task | router/selector latency per call s (mean / p50 / p90) | task latency s (mean / p50 / p90) | router/selector cost $/task | billed cost $/task (agent + router) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| all_tools | 32 | 0 | 0.66 (19/29) | 0.69 (20/29) | 1.00 (3/3) | 0.91 (0.00 + 0.91) | 0.22 | 3.41 (0.00) | 37,343 | 267 | – | 10.9 / 5.5 / 18.8 | – | 0.000571 |
+| bm25_search | 32 | 0 | 0.62 (18/29) | 0.62 (18/29) | 1.00 (3/3) | 2.66 (1.91 + 0.75) | 0.16 | 4.38 (0.00) | 18,118 | 255 | – | 13.3 / 6.3 / 15.5 | – | 0.001002 |
+| regex_search | 32 | 0 | 0.55 (16/29) | 0.59 (17/29) | 1.00 (3/3) | 3.03 (2.38 + 0.66) | 0.09 | 4.59 (0.00) | 12,698 | 211 | – | 8.1 / 8.3 / 12.7 | – | 0.000508 |
+| langchain_selector | 32 | 0 | 0.90 (26/29) | 0.93 (27/29) | 1.00 (3/3) | 0.94 (0.00 + 0.94) | 0.09 | 4.69 (2.34) | 17,135 | 345 | 2.68 / 2.59 / 3.73 | 14.1 / 11.5 / 17.8 | 0.000214 | 0.000525 |
+| router_first_jev | 32 | 0 | 0.83 (24/29) | 0.90 (26/29) | 1.00 (3/3) | 1.50 (0.56 + 0.94) | 0.12 | 4.12 (1.25) | 12,424 | 193 | 0.21 / 0.18 / 0.26 | 8.8 / 4.9 / 10.6 | 0.000130 | 0.000666 |
+
+Per conversation (sums over the turns, then mean):
+
+| setup | conversations | with an error | every turn's first call correct | turns correct | router calls | request_tools calls | fallback / tool_search calls | LLM calls | input tok | output tok | latency s (mean / p50 / p90) | router s | router cost $ | total cost $ |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| all_tools | 15 | 0 | 0.40 (6/15) | 0.69 (22/32) | 0.00 | 0.00 | 0.00 | 7.27 | 79,664 | 570 | 23.2 / 16.4 / 38.6 | 0.00 | – | 0.001219 |
+| bm25_search | 15 | 0 | 0.40 (6/15) | 0.66 (21/32) | 0.00 | 0.00 | 4.07 | 9.33 | 38,652 | 544 | 28.5 / 16.6 / 107.7 | 0.00 | – | 0.002138 |
+| regex_search | 15 | 0 | 0.40 (6/15) | 0.59 (19/32) | 0.00 | 0.00 | 5.07 | 9.80 | 27,089 | 451 | 17.3 / 17.8 / 26.3 | 0.00 | – | 0.001084 |
+| langchain_selector | 15 | 0 | 0.80 (12/15) | 0.91 (29/32) | 5.00 | 0.00 | 0.00 | 10.00 | 36,554 | 736 | 30.0 / 26.7 / 36.1 | 13.42 | 0.000457 | 0.001119 |
+| router_first_jev | 15 | 0 | 0.67 (10/15) | 0.84 (27/32) | 2.67 | 0.53 | 0.67 | 8.80 | 26,505 | 411 | 18.7 / 13.1 / 19.7 | 0.57 | 0.000277 | 0.001422 |
+
+#### C. multi_step (18 tasks, 2-3 tools in sequence)
+
+| setup | tasks | errors | first call = first gold tool | all gold tools called | all called, in order | steps correct | tool calls/task (discovery + real) | wasted real calls/task | LLM calls/task (of which router/selector) | input tok/task | output tok/task | router/selector latency per call s (mean / p50 / p90) | task latency s (mean / p50 / p90) | billed cost $/task (agent + router) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| all_tools | 18 | 0 | 1.00 (18/18) | 1.00 (18/18) | 1.00 (18/18) | 1.00 (38/38) | 2.17 (0.00 + 2.17) | 0.06 | 3.78 (0.00) | 39,615 | 269 | – | 13.8 / 8.7 / 15.7 | 0.000655 |
+| bm25_search | 18 | 0 | 0.89 (16/18) | 0.89 (16/18) | 0.89 (16/18) | 0.87 (33/38) | 3.56 (1.72 + 1.83) | 0.00 | 5.00 (0.00) | 14,511 | 347 | – | 13.7 / 7.7 / 14.4 | 0.000781 |
+| regex_search | 18 | 0 | 0.72 (13/18) | 0.61 (11/18) | 0.61 (11/18) | 0.66 (25/38) | 5.22 (3.72 + 1.50) | 0.00 | 6.78 (0.00) | 14,916 | 364 | – | 15.9 / 11.1 / 14.5 | 0.000722 |
+| langchain_selector | 18 | 0 | 1.00 (18/18) | 0.94 (17/18) | 0.94 (17/18) | 0.97 (37/38) | 2.06 (0.00 + 2.06) | 0.00 | 7.11 (3.56) | 26,439 | 535 | 2.88 / 2.68 / 4.15 | 17.5 / 17.1 / 25.1 | 0.000797 |
+| router_first_jev | 18 | 0 | 1.00 (18/18) | 0.89 (16/18) | 0.89 (16/18) | 0.95 (36/38) | 3.06 (0.83 + 2.22) | 0.22 | 5.50 (1.06) | 14,952 | 317 | 0.25 / 0.22 / 0.39 | 9.3 / 9.8 / 12.1 | 0.000956 |
+
+
+In plain words, against the no-discovery baseline (`all_tools`), for this one agent model:
+
+- **Every discovery method cut input tokens by half or more** on single-turn and multi-turn
+  (BM25 -68% / -51%, regex -75% / -66%, LangChain selector -55% / -54%, Jev router -65% /
+  -67%). On those two workflows each cost 0.5 to 1.3 extra model calls per task; on
+  multi-step 1.2 to 3.3.
+- **Narrowing the tool list before the model sees it helped accuracy; making the model search
+  did not.** Single-turn first call correct: baseline 28/40, LangChain selector 35/40, Jev
+  router 33/40, BM25 search 29/40, regex search 22/40. Multi-turn (29 answerable turns):
+  baseline 19, selector 26, Jev 24, BM25 18, regex 16.
+- **The baseline is weak for a specific reason.** With all 31 tools loaded, Luna made no real
+  tool call on 10 of its 12 single-turn misses, hit the 8-step cap on 9 of 40 answerable
+  tasks and opened 2.6 skill files per task (under 1 in every other setup). So part of the
+  gap is this model reading skills instead of acting, not tool choice.
+- **Regex search was the weakest method everywhere.** A search returned the gold tool on only
+  23 of 40 single-turn tasks (BM25: 38 of 40), and on multi-step it completed 11 of 18
+  sequences in order (baseline 18, selector 17, BM25 and Jev 16).
+- **Multi-step is where the baseline wins**: 18/18 sequences in order. Discovery methods lose
+  a task or two because the second tool was not loaded or the agent stopped early.
+- **Jev is the fast router, the LangChain selector the slow one.** Jev took 0.19 s per call
+  (p90 0.24 s) and its setup had the lowest mean task latency on single-turn (8.1 s against 11.5 s
+  for the baseline) and multi-step (9.3 s against 13.8 s). The selector took 3.35 s per call (p90 3.3 s)
+  and runs before every model call (about 2.5 calls per task), giving the highest task
+  latency in all three workflows (14.2 s single-turn).
+- **No-tool questions**: every setup abstained on all of them, except the Jev setup on one of
+  8 single-turn questions.
+- **Cost per task does not follow tokens** (see the note on prompt caching below): BM25
+  search and the Jev setup were billed more per task than the baseline in all three workflows
+  despite sending far fewer tokens.
+
+**Why fewer tokens did not mean lower cost: prompt caching.** `all_tools` sent 39,053 input
+tokens per single-turn task and was billed $0.00057; `bm25_search` sent 12,329 and was billed
+$0.00069. I checked OpenRouter's usage fields with a direct probe on `openai/gpt-6-luna`: the
+same request with the 31 tools bound reported `cached_tokens` 0 and cost $0.00113 on the
+first call, then `cached_tokens` 9,041 of 9,059 and cost $0.000095 on the second and third
+calls, about a tenth of list price. So the baseline's large prefix (system prompt plus 31
+tool definitions) is identical on every call and is billed at the cached rate after the first
+one, while the search and router setups change the tool list between calls, which breaks the
+cached prefix. The harness records billed cost per row but not cached tokens per row, so the
+size of the effect per setup is not measured; the direction is confirmed by the probe.
+
+Caveats: one agent model; dev split only; multi-step gold is author-labelled; the Jev setup
+missed the second tool on 2 of 18 multi-step tasks (once the router's picks lacked it, once
+it was loaded and the agent stopped); 1 of 48 `langchain_selector` single-turn tasks is an
+error row (the selector model wrote prose before its JSON and LangChain's parser raised);
+runs stalled for minutes at a time between tasks although no recorded task took longer than
+131 s and no task hit the 300 s cap.
+
 
 **Earlier run, free models only** (`nvidia/nemotron-3-super-120b-a12b:free`; 48 dev-split
 questions = 40 answerable + 8 no-tool; router for `router_first` = free-model router
