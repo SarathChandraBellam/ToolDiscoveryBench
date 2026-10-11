@@ -1,4 +1,4 @@
-"""Build a deepagents agent for one setup and run it on one question."""
+"""Build a deepagents agent for one setup and run it on a question or a conversation."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from typing import Any
 from langchain_core.callbacks import BaseCallbackHandler
 
 from tooldiscoverybench.harness.middleware import DeferredToolsMiddleware, ToolRouterMiddleware
-from tooldiscoverybench.harness.routing import ROUTER_SOURCE, RouterPick
-from tooldiscoverybench.harness.tools import SEARCH_TOOL, CallLog, Catalog
+from tooldiscoverybench.harness.routing import ROUTER_SOURCE, BudgetExhaustedError
+from tooldiscoverybench.harness.tools import REQUEST_TOOL, SEARCH_TOOL, CallLog, Catalog
 
 WORKSPACE = Path(__file__).parent / "workspace"
 SKILL_SOURCES = ["/skills/"]
@@ -28,6 +28,7 @@ SETUP_KINDS = {
     "bm25_search": "search:bm25",
     "regex_search": "search:regex",
     "router_first": "router",
+    "router_first_jev": "router",
     "langchain_selector": "langchain_selector",
 }
 
@@ -60,6 +61,37 @@ SETUP_PROMPTS = {
     ),
     "langchain_selector": "Relevant integration tools are loaded and can be called directly.",
 }
+SETUP_PROMPTS["router_first_jev"] = SETUP_PROMPTS["router_first"]
+_ROUTER_NO_SEARCH = (
+    "A router preselected the integration tools most likely to fit this request; they are "
+    "loaded. Other integration tools exist but are not loaded."
+)
+_REQUEST_HINT = (
+    f" If no loaded tool fits, first call `{REQUEST_TOOL}` with one sentence describing the "
+    "capability you need: the router loads its best matches."
+)
+
+
+@dataclass(frozen=True)
+class RouterOptions:
+    """How ``ToolRouterMiddleware`` is configured for the router setups."""
+
+    request_tools: bool = False  # expose request_tools(need) for mid-task re-routing
+    search_fallback: bool = True  # keep BM25 tool_search as the last resort
+    carry: str = "cap"  # tools loaded in earlier turns: cap | keep | replace
+    carry_cap: int = 5
+
+
+def system_prompt(setup: str, options: RouterOptions) -> str:
+    text = SETUP_PROMPTS[setup]
+    if SETUP_KINDS[setup] == "router":
+        if not options.search_fallback:
+            text = _ROUTER_NO_SEARCH
+        if options.request_tools:
+            text += _REQUEST_HINT
+            if options.search_fallback:
+                text += f" Use `{SEARCH_TOOL}` only if that does not help."
+    return f"{BASE_PROMPT}\n\n{text}"
 
 
 class UsageCounter(BaseCallbackHandler):
@@ -83,8 +115,9 @@ class UsageCounter(BaseCallbackHandler):
         for gens in response.generations:
             for gen in gens:
                 usage = getattr(getattr(gen, "message", None), "usage_metadata", None) or {}
-                i, o = int(usage.get("input_tokens", 0) or 0), int(
-                    usage.get("output_tokens", 0) or 0
+                i, o = (
+                    int(usage.get("input_tokens", 0) or 0),
+                    int(usage.get("output_tokens", 0) or 0),
                 )
                 if router:
                     self.router_input_tokens += i
@@ -108,7 +141,7 @@ class AgentRun:
     initially_loaded: list[str] = field(default_factory=list)
     loaded_at_end: list[str] = field(default_factory=list)
     unloaded_calls: list[str] = field(default_factory=list)
-    router_pick: RouterPick | None = None
+    router_events: list[dict[str, Any]] = field(default_factory=list)  # one per router call
     skills_read: list[str] = field(default_factory=list)
     builtin_calls: list[str] = field(default_factory=list)
     trace: list[str] = field(default_factory=list)  # compact per-model-step summary
@@ -134,17 +167,29 @@ def _register_profile(model: Any) -> None:
 
 
 def discovery_middleware(
-    setup: str, catalog: Catalog, router: Any = None, selector_model: Any = None, k: int = 3
+    setup: str,
+    catalog: Catalog,
+    router: Any = None,
+    selector_model: Any = None,
+    k: int = 3,
+    options: RouterOptions | None = None,
 ) -> Any:
     kind = SETUP_KINDS[setup]
+    options = options or RouterOptions()
     if kind == "all":
         return None
     if kind.startswith("search:"):
         return DeferredToolsMiddleware(catalog.names)
     if kind == "router":
         if router is None:
-            raise ValueError("router_first needs a router")
-        return ToolRouterMiddleware(router, catalog.tools)
+            raise ValueError(f"{setup} needs a router")
+        return ToolRouterMiddleware(
+            router,
+            catalog.tools,
+            request_tools=options.request_tools,
+            carry=options.carry,  # type: ignore[arg-type]
+            carry_cap=options.carry_cap,
+        )
     if kind == "langchain_selector":
         from langchain.agents.middleware import LLMToolSelectorMiddleware
 
@@ -156,7 +201,13 @@ def discovery_middleware(
 
 
 def build_agent(
-    model: Any, tools: list[Any], setup: str, max_model_calls: int, discovery: Any = None
+    model: Any,
+    tools: list[Any],
+    setup: str,
+    max_model_calls: int,
+    discovery: Any = None,
+    options: RouterOptions | None = None,
+    checkpointer: Any = None,
 ) -> Any:
     from deepagents import create_deep_agent
     from deepagents.backends import FilesystemBackend
@@ -171,10 +222,11 @@ def build_agent(
     return create_deep_agent(
         model=model,
         tools=tools,
-        system_prompt=f"{BASE_PROMPT}\n\n{SETUP_PROMPTS[setup]}",
+        system_prompt=system_prompt(setup, options or RouterOptions()),
         skills=SKILL_SOURCES,
         backend=FilesystemBackend(root_dir=str(WORKSPACE), virtual_mode=True),
         middleware=middleware,
+        checkpointer=checkpointer,
     )
 
 
@@ -188,6 +240,95 @@ def _text(content: Any) -> str:
     return str(content)
 
 
+def run_conversation(  # noqa: PLR0915 - one linear loop over turns
+    model: Any,
+    turns: list[str],
+    setup: str,
+    catalog: Catalog,
+    router: Any = None,
+    max_model_calls: int = 8,
+    selector_model: Any = None,
+    options: RouterOptions | None = None,
+) -> list[AgentRun]:
+    """Run ``turns`` as one conversation on one agent thread; one ``AgentRun`` per turn.
+
+    The step cap applies per turn. A turn that errors ends the conversation: later turns are
+    returned as error rows without being run.
+    """
+    from langchain_core.messages import HumanMessage
+    from langgraph.checkpoint.memory import InMemorySaver
+    from langgraph.errors import GraphRecursionError
+
+    options = options or RouterOptions()
+    log = CallLog()
+    kind = SETUP_KINDS[setup]
+    tools: list[Any] = catalog.stubs(log)
+    if kind.startswith("search:") or (kind == "router" and options.search_fallback):
+        variant = kind.split(":", 1)[1] if kind.startswith("search:") else "bm25"
+        tools.append(catalog.search_tool(variant, log))
+    discovery = discovery_middleware(setup, catalog, router, selector_model, options=options)
+    multi = len(turns) > 1
+    agent: Any = None
+    runs: list[AgentRun] = []
+    seen_messages = seen_events = 0
+    for question in turns:
+        usage = UsageCounter()
+        run = AgentRun(CallLog(), usage, 0.0)
+        runs.append(run)
+        if runs[:-1] and runs[-2].error:
+            run.error = "skipped: an earlier turn of this conversation errored"
+            continue
+        calls_before, searches_before = len(log.calls), len(log.searches)
+        state: dict[str, Any] = {}
+        started = time.perf_counter()
+        try:
+            if agent is None:
+                agent = build_agent(
+                    model,
+                    tools,
+                    setup,
+                    max_model_calls,
+                    discovery,
+                    options,
+                    InMemorySaver() if multi else None,
+                )
+            config: dict[str, Any] = {
+                "callbacks": [usage],
+                "recursion_limit": 40 * max_model_calls,
+            }
+            if multi:
+                config["configurable"] = {"thread_id": "conversation"}
+            # stream full states so a run that dies mid-way still yields its messages
+            for state in agent.stream(  # noqa: B007
+                {"messages": [HumanMessage(question)]}, config=config, stream_mode="values"
+            ):
+                pass
+        except BudgetExhaustedError:
+            raise  # paid-router spend cap: stop the whole run, write no row
+        except GraphRecursionError:
+            run.hit_step_cap = True
+        except Exception as exc:  # noqa: BLE001 - scored as an error row
+            run.error = f"{type(exc).__name__}: {exc}"[:800]
+        run.latency_ms = (time.perf_counter() - started) * 1000
+        run.log = CallLog(log.calls[calls_before:], log.searches[searches_before:])
+        messages = list(state.get("messages", []))
+        events = list(state.get("tdb_router_events", []))
+        run.router_events = events[seen_events:]
+        if kind == "all":
+            run.initially_loaded = list(catalog.names)
+        elif isinstance(discovery, ToolRouterMiddleware):
+            run.initially_loaded = [
+                *state.get("tdb_carry", []),
+                *state.get("tdb_turn_picks", []),
+            ]
+        if isinstance(discovery, DeferredToolsMiddleware):
+            run.loaded_at_end = discovery.loaded(state)
+        _read_messages(run, messages[seen_messages:], catalog)
+        seen_messages, seen_events = len(messages), len(events)
+        run.hit_step_cap = run.hit_step_cap or usage.calls >= max_model_calls
+    return runs
+
+
 def run_agent(
     model: Any,
     question: str,
@@ -196,56 +337,27 @@ def run_agent(
     router: Any = None,
     max_model_calls: int = 8,
     selector_model: Any = None,
+    options: RouterOptions | None = None,
 ) -> AgentRun:
-    from langchain_core.messages import HumanMessage
-
-    log = CallLog()
-    usage = UsageCounter()
-    kind = SETUP_KINDS[setup]
-    tools: list[Any] = catalog.stubs(log)
-    if kind.startswith("search:") or kind == "router":
-        variant = kind.split(":", 1)[1] if kind.startswith("search:") else "bm25"
-        tools.append(catalog.search_tool(variant, log))
-    discovery = discovery_middleware(setup, catalog, router, selector_model)
-    run = AgentRun(log, usage, 0.0)
-    if kind == "all":
-        run.initially_loaded = list(catalog.names)
-    started = time.perf_counter()
-    messages: list[Any] = []
-    try:
-        agent = build_agent(model, tools, setup, max_model_calls, discovery)
-        # stream full states so a run that dies mid-way still yields its messages
-        for state in agent.stream(
-            {"messages": [HumanMessage(question)]},
-            config={"callbacks": [usage], "recursion_limit": 40 * max_model_calls},
-            stream_mode="values",
-        ):
-            messages = state.get("messages", messages)
-    except Exception as exc:  # noqa: BLE001 - scored as an error row
-        from langgraph.errors import GraphRecursionError
-
-        if isinstance(exc, GraphRecursionError):
-            run.hit_step_cap = True
-        else:
-            run.error = f"{type(exc).__name__}: {exc}"[:800]
-    run.latency_ms = (time.perf_counter() - started) * 1000
-    if isinstance(discovery, ToolRouterMiddleware):
-        run.router_pick = discovery.pick
-        run.initially_loaded = [e["tool"] for e in discovery.load_events if e["via"] == "router"]
-    if isinstance(discovery, DeferredToolsMiddleware):
-        run.loaded_at_end = list(discovery.loaded)
-        run.unloaded_calls = list(discovery.rejected)
-    _read_messages(run, messages, catalog)
-    run.hit_step_cap = run.hit_step_cap or usage.calls >= max_model_calls
-    return run
+    """One single-turn run."""
+    return run_conversation(
+        model, [question], setup, catalog, router, max_model_calls, selector_model, options
+    )[0]
 
 
 def _read_messages(run: AgentRun, messages: list[Any], catalog: Catalog) -> None:
-    """Fill trace, built-in calls, skill reads and final text from the run's messages."""
-    from langchain_core.messages import AIMessage
+    """Fill trace, built-in calls, skill reads, refused calls and final text for one turn."""
+    from langchain_core.messages import AIMessage, ToolMessage
 
     ai = [m for m in messages if isinstance(m, AIMessage)]
-    known = set(catalog.by_name) | {SEARCH_TOOL}
+    known = set(catalog.by_name) | {SEARCH_TOOL, REQUEST_TOOL}
+    for msg in messages:
+        if (
+            isinstance(msg, ToolMessage)
+            and msg.name in catalog.by_name
+            and "is not loaded" in _text(msg.content)
+        ):
+            run.unloaded_calls.append(str(msg.name))
     for msg in ai:
         names = [c.get("name", "") for c in msg.tool_calls or []]
         run.trace.append(f"calls={names}" if names else f"text={_text(msg.content)[:120]!r}")

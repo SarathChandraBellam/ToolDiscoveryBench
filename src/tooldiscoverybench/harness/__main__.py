@@ -12,18 +12,26 @@ from typing import Any
 import yaml
 
 from tooldiscoverybench.harness import DEFAULT_SETUPS, SETUPS
+from tooldiscoverybench.harness.agent import RouterOptions
 from tooldiscoverybench.harness.models import (
     RequestCounter,
     assert_free,
     build_chat_model,
     free_quota,
 )
-from tooldiscoverybench.harness.report import write_summary
-from tooldiscoverybench.harness.routing import BM25ShortlistRouter, FreeLLMRouter, JevDecisionRouter
-from tooldiscoverybench.harness.runner import (
+from tooldiscoverybench.harness.report import write_multiturn_summary, write_summary
+from tooldiscoverybench.harness.routing import (
+    BM25ShortlistRouter,
     BudgetExhaustedError,
+    FreeLLMRouter,
+    JevDecisionRouter,
+)
+from tooldiscoverybench.harness.runner import (
+    build_conversations,
     load_harness_catalog,
+    load_results,
     run_cell,
+    run_conversation_cell,
     sample_questions,
 )
 
@@ -34,7 +42,22 @@ DEFAULTS: dict[str, Any] = {
     "router_model": "apodex/apodex-1.1-mini:free",
     "jev_model": "typesafe/jev-1.13",
     "allow_paid_router": False,
+    "jev_max_spend_usd": 1.0,  # hard cap on Jev spend across runs into the same out dir
     "router_k": 3,
+    # ToolRouterMiddleware options, per suite (single-turn keeps the PR's first configuration)
+    "request_tools": False,
+    "search_fallback": True,
+    "carry": "cap",  # tools loaded in earlier turns: cap | keep | replace
+    "carry_cap": 5,
+    "suite": "single",  # single | multiturn
+    "multiturn": {
+        "request_tools": True,
+        "n_same_server": 5,
+        "n_cross_server": 5,
+        "n_ends_no_tool": 3,
+        "n_three_turn": 2,
+        "seed": 20261011,
+    },
     "n_per_server": 4,
     "n_no_tool": 8,
     "seed": 20261010,
@@ -58,6 +81,9 @@ def parse_args(argv: list[str] | None) -> dict[str, Any]:
         default=None,
         help="permit router=jev (paid). Needs the owner's approval.",
     )
+    p.add_argument("--suite", choices=["single", "multiturn"])
+    p.add_argument("--jev-max-spend-usd", type=float, help="stop before Jev spend passes this")
+    p.add_argument("--carry", choices=["cap", "keep", "replace"])
     p.add_argument("--n-per-server", type=int)
     p.add_argument("--n-no-tool", type=int)
     p.add_argument("--limit", type=int, help="only the first N sampled questions (smoke runs)")
@@ -70,25 +96,53 @@ def parse_args(argv: list[str] | None) -> dict[str, Any]:
     ns = p.parse_args(argv)
     cfg = dict(DEFAULTS)
     if ns.config:
-        cfg.update(yaml.safe_load(ns.config.read_text()) or {})
+        loaded = yaml.safe_load(ns.config.read_text()) or {}
+        loaded["multiturn"] = {**cfg["multiturn"], **(loaded.get("multiturn") or {})}
+        cfg.update(loaded)
     for key, value in vars(ns).items():
         if value is not None and key != "config":
             cfg[key] = value
     return cfg
 
 
-def main(argv: list[str] | None = None) -> int:
+def jev_spend(out: Path) -> float:
+    """Jev cost already recorded in this out dir (every row ever written, reruns included)."""
+    rows = load_results(out / "results.jsonl") + load_results(out / "multiturn_results.jsonl")
+    return sum(float(r.get("router_cost_usd") or 0) for r in rows)
+
+
+def main(argv: list[str] | None = None) -> int:  # noqa: PLR0912, PLR0915 - linear CLI entry point
     cfg = parse_args(argv)
     out = Path(cfg["out"])
     out.mkdir(parents=True, exist_ok=True)
     catalog = load_harness_catalog()
+    multi = cfg["suite"] == "multiturn"
+    mt = cfg["multiturn"]
     questions = sample_questions(cfg["n_per_server"], cfg["n_no_tool"], cfg["seed"])
-    if cfg.get("limit"):
+    conversations: list[dict[str, Any]] = []
+    if multi:
+        # questions of the single-turn sample are not reused
+        conversations = build_conversations(
+            mt["n_same_server"],
+            mt["n_cross_server"],
+            mt["n_ends_no_tool"],
+            mt["n_three_turn"],
+            mt["seed"],
+            exclude_qids={q["qid"] for q in questions},
+        )
+        if cfg.get("limit"):
+            conversations = conversations[: cfg["limit"]]
+    elif cfg.get("limit"):
         questions = questions[: cfg["limit"]]
     qids = [q["qid"] for q in questions]
+    options = RouterOptions(
+        request_tools=bool(mt["request_tools"] if multi else cfg["request_tools"]),
+        search_fallback=bool(cfg["search_fallback"]),
+        carry=str(cfg["carry"]),
+        carry_cap=int(cfg["carry_cap"]),
+    )
     router_label = {
-        "free_llm": f"free-model router ({cfg['router_model']}), top-{cfg['router_k']}, "
-        "one call per task via ToolRouterMiddleware",
+        "free_llm": f"free-model router ({cfg['router_model']}), top-{cfg['router_k']}",
         "bm25": f"BM25 shortlist, top-{cfg['router_k']} (no LLM call)",
         "jev": f"Jev ({cfg['jev_model']}, PAID), top-{cfg['router_k']}",
     }[cfg["router"]]
@@ -99,12 +153,38 @@ def main(argv: list[str] | None = None) -> int:
         "n_tools": len(catalog.tools),
         "max_model_calls": cfg["max_model_calls"],
         "router": router_label,
+        "jev_router": f"Jev ({cfg['jev_model']}, PAID, via /api/alpha/decisions), "
+        f"top-{cfg['router_k']}",
         "models": cfg["models"],
         "setups": cfg["setups"],
     }
-    (out / "sample.json").write_text(json.dumps({"qids": qids, **meta}, indent=1))
+    turn_keys = [
+        f"{c['conv_id']}#t{t}" for c in conversations for t in range(1, len(c["turns"]) + 1)
+    ]
+    kinds = sorted({c["kind"] for c in conversations})
+    mt_meta = {
+        **meta,
+        "n_conversations": len(conversations),
+        "kinds": ", ".join(f"{sum(c['kind'] == k for c in conversations)} {k}" for k in kinds),
+        "router_options": f"a router call on every new user message, request_tools "
+        f"{'on' if options.request_tools else 'off'}, tool_search fallback "
+        f"{'on' if options.search_fallback else 'off'}, carry={options.carry}"
+        + (f" (last {options.carry_cap})" if options.carry == "cap" else ""),
+    }
+
+    def summary() -> str:
+        if multi:
+            return write_multiturn_summary(out, turn_keys, mt_meta)
+        return write_summary(out, qids, meta)
+
+    if multi:
+        (out / "multiturn_sample.json").write_text(
+            json.dumps({**mt_meta, "conversations": conversations}, indent=1)
+        )
+    else:
+        (out / "sample.json").write_text(json.dumps({"qids": qids, **meta}, indent=1))
     if cfg.get("summary_only"):
-        print(write_summary(out, qids, meta))
+        print(summary())
         return 0
 
     for m in cfg["models"]:
@@ -124,12 +204,21 @@ def main(argv: list[str] | None = None) -> int:
         return state["remaining"] - (counter.count - state["at"]) - int(cfg["quota_reserve"])
 
     rpm = float(cfg["requests_per_minute"])
-    router: Any
     selector_model = None
-    if cfg["router"] == "jev":
-        router = JevDecisionRouter(
-            catalog.server_desc, cfg["router_k"], cfg["jev_model"], bool(cfg["allow_paid_router"])
+    jev: JevDecisionRouter | None = None
+    if cfg["router"] == "jev" or "router_first_jev" in cfg["setups"]:
+        jev = JevDecisionRouter(
+            catalog.server_desc,
+            cfg["router_k"],
+            cfg["jev_model"],
+            bool(cfg["allow_paid_router"]),
+            max_spend_usd=float(cfg["jev_max_spend_usd"]),
+            spent_usd=jev_spend(out),
         )
+        print(f"Jev spend so far in {out}: ${jev.spent_usd:.6f} (cap ${jev.max_spend_usd})")
+    router: Any
+    if cfg["router"] == "jev":
+        router = jev
     elif cfg["router"] == "bm25":
         router = BM25ShortlistRouter(catalog.server_desc, int(cfg["router_k"]))
     else:
@@ -150,30 +239,50 @@ def main(argv: list[str] | None = None) -> int:
                 refresh_quota()
                 t0 = time.perf_counter()
                 before = counter.count
-                n = run_cell(
-                    setup,
-                    model_id,
-                    model,
-                    questions,
-                    catalog,
-                    out / "results.jsonl",
-                    router=router,
-                    selector_model=selector_model,
-                    max_model_calls=int(cfg["max_model_calls"]),
-                    retry_errors=bool(cfg.get("retry_errors")),
-                    budget_left=budget_left,
-                    log=lambda s: print(s, flush=True),
-                )
+                setup_router = jev if setup == "router_first_jev" else router
+                if multi:
+                    n = run_conversation_cell(
+                        setup,
+                        model_id,
+                        model,
+                        conversations,
+                        catalog,
+                        out / "multiturn_results.jsonl",
+                        router=setup_router,
+                        max_model_calls=int(cfg["max_model_calls"]),
+                        options=options,
+                        budget_left=budget_left,
+                        log=lambda s: print(s, flush=True),
+                    )
+                else:
+                    n = run_cell(
+                        setup,
+                        model_id,
+                        model,
+                        questions,
+                        catalog,
+                        out / "results.jsonl",
+                        router=setup_router,
+                        selector_model=selector_model,
+                        max_model_calls=int(cfg["max_model_calls"]),
+                        options=options,
+                        retry_errors=bool(cfg.get("retry_errors")),
+                        budget_left=budget_left,
+                        log=lambda s: print(s, flush=True),
+                    )
                 print(
                     f"== cell {setup}/{model_id}: {n} rows, {counter.count - before} requests, "
-                    f"{time.perf_counter() - t0:.0f}s; total requests {counter.count}",
+                    f"{time.perf_counter() - t0:.0f}s; total requests {counter.count}"
+                    + (f"; Jev spend ${jev.spent_usd:.6f} over {jev.calls} calls" if jev else ""),
                     flush=True,
                 )
     except BudgetExhaustedError as exc:
         print(f"STOP: {exc}", flush=True)
         status = 2
     print(f"requests sent this run: {counter.count}; quota now: {free_quota()}", flush=True)
-    print(write_summary(out, qids, meta))
+    if jev:
+        print(f"Jev spend recorded in {out}: ${jev_spend(out):.6f}", flush=True)
+    print(summary())
     return status
 
 

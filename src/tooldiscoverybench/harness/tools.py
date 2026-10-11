@@ -34,6 +34,7 @@ from tooldiscoverybench.routers.base import safe_tool_name
 from tooldiscoverybench.routers.baselines.bm25 import bm25_rank
 
 SEARCH_TOOL = "tool_search"
+REQUEST_TOOL = "request_tools"
 DEFAULT_LIMIT = 5
 MAX_REGEX_CHARS = 200
 MAX_QUERY_CHARS = 500

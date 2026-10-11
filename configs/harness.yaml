@@ -4,7 +4,7 @@
 models:
   - nvidia/nemotron-3-super-120b-a12b:free
   - apodex/apodex-1.1-mini:free
-setups: [all_tools, bm25_search, regex_search, router_first]   # + optional langchain_selector
+setups: [all_tools, bm25_search, regex_search, router_first]   # + router_first_jev (paid), langchain_selector
 
 # Router for router_first:
 #   free_llm  one chat call to router_model (labelled "free-model router" in results)
@@ -15,12 +15,30 @@ router: free_llm
 router_model: apodex/apodex-1.1-mini:free   # nemotron-3.5-lightning:free timed out (504) in smoke runs
 jev_model: typesafe/jev-1.13
 allow_paid_router: false
+jev_max_spend_usd: 1.0   # router_first_jev / router=jev stop before Jev spend passes this
 router_k: 3
 
 # Sample: dev split of datasets_v1 only (never data/golden/splits/test_qids.txt)
 n_per_server: 4      # x 10 servers, stratified by the gold tool's server
 n_no_tool: 8
 seed: 20261010
+
+# ToolRouterMiddleware (router_first, router_first_jev). The router is called on every new
+# user message; these switch the rest.
+request_tools: false     # single-turn suite: off, as in the first runs of this sample
+search_fallback: true    # keep BM25 tool_search as the last resort
+carry: cap               # tools loaded in earlier turns: cap (keep last carry_cap) | keep | replace
+carry_cap: 5
+
+# Multi-turn suite (--suite multiturn): conversations of dev questions, every follow-up needs
+# a different tool. Results go to multiturn_results.jsonl / multiturn_summary.md.
+multiturn:
+  request_tools: true    # agent may call request_tools(need) to re-route mid-task
+  n_same_server: 5
+  n_cross_server: 5
+  n_ends_no_tool: 3
+  n_three_turn: 2
+  seed: 20261011
 
 max_model_calls: 8   # agent step cap per question
 requests_per_minute: 15

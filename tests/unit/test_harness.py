@@ -14,7 +14,7 @@ pytest.importorskip("deepagents")
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 
-from tooldiscoverybench.harness.agent import run_agent
+from tooldiscoverybench.harness.agent import RouterOptions, run_agent, run_conversation
 from tooldiscoverybench.harness.models import PaidModelError, assert_free
 from tooldiscoverybench.harness.report import complete_cells
 from tooldiscoverybench.harness.routing import JevDecisionRouter, RouterPick, parse_tool_ids
@@ -140,21 +140,25 @@ def test_deferred_tools_hidden_until_discovered(catalog: Any) -> None:
     mw = DeferredToolsMiddleware(catalog.names)
     ref = '{"tool_references": [{"type": "tool_reference", "tool_name": "kiwi__search-flight"}]}'
     msgs = [HumanMessage("x"), ToolMessage(ref, tool_call_id="1", name="tool_search")]
-    mw._discover(msgs)
-    assert mw.loaded == ["kiwi__search-flight"]
+    assert mw.loaded({"messages": msgs[:1]}) == []
+    assert mw.loaded({"messages": msgs}) == ["kiwi__search-flight"]
 
 
 class _FixedRouter:
     kind = "fixed"
     model_id = "fixed"
 
-    def __init__(self, ids: list[str]) -> None:
+    def __init__(self, ids: list[str], *more: list[str]) -> None:
         self.ids = ids
+        self.script = [ids, *more]  # picks per call; the last one repeats
         self.calls = 0
+        self.questions: list[str] = []
 
     def pick(self, question: str, tools: list[Any]) -> RouterPick:
+        ids = self.script[min(self.calls, len(self.script) - 1)]
         self.calls += 1
-        return RouterPick(self.ids, 5.0, "test router", "fixed", llm_calls=0)
+        self.questions.append(question)
+        return RouterPick(ids, 5.0, "test router", "fixed", llm_calls=0, raw={"cost_usd": 0.001})
 
 
 def test_router_first_picks_once_and_falls_back(catalog: Any) -> None:
@@ -237,3 +241,224 @@ def test_summary_excludes_partial_cells(tmp_path: Path) -> None:
     (tmp_path / "results.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
     text = write_summary(tmp_path, ["a", "b"], {})
     assert "1.00 (2/2)" in text and "Incomplete cells" in text
+
+
+# ------------------------------------------------------------------ routing across turns
+TURNS = ["how do Astro content collections work?", "now find me a flight from Prague to Oslo"]
+ASTRO, FLIGHT = "astro-docs.search_astro_docs", "kiwi.search-flight"
+
+
+def test_router_reroutes_on_every_new_user_message(catalog: Any) -> None:
+    router = _FixedRouter([ASTRO], [FLIGHT])
+    model = scripted(
+        call("astro-docs__search_astro_docs", {"query": "x"}, 0),
+        AIMessage("done"),
+        call("kiwi__search-flight", {}, 1),
+        AIMessage("done"),
+    )
+    runs = run_conversation(model, TURNS, "router_first", catalog, router)
+    assert router.calls == 2  # once per user message, not per model call
+    assert router.questions[0] == TURNS[0]
+    # the second call sees the new message plus a short summary of the earlier turn
+    assert TURNS[0] in router.questions[1] and f"Current request: {TURNS[1]}" in router.questions[1]
+    assert "astro-docs__search_astro_docs" in router.questions[1]
+    rows = [
+        score_row(
+            {"qid": f"c#t{i}", "question": t, "gold": [g], "no_tool": False},
+            "router_first",
+            "fake:free",
+            run,
+        )
+        for i, (t, g, run) in enumerate(zip(TURNS, [ASTRO, FLIGHT], runs, strict=True), 1)
+    ]
+    assert [r["top1_correct"] for r in rows] == [True, True]
+    assert [r["router_calls"] for r in rows] == [1, 1]
+    assert rows[1]["router_tools"] == [FLIGHT] and rows[1]["router_cost_usd"] == 0.001
+    # default carry policy keeps the earlier turn's tool loaded next to the new pick
+    assert runs[1].initially_loaded == ["astro-docs__search_astro_docs", "kiwi__search-flight"]
+    assert rows[1]["llm_calls"] == 2 and rows[1]["input_tokens"] == 200  # per turn, not summed
+
+
+@pytest.mark.parametrize(
+    ("carry", "cap", "expected"),
+    [
+        (
+            "keep",
+            5,
+            ["astro-docs__search_astro_docs", "svelte__list-sections", "kiwi__search-flight"],
+        ),
+        ("cap", 1, ["svelte__list-sections", "kiwi__search-flight"]),
+        ("replace", 5, ["kiwi__search-flight"]),
+    ],
+)
+def test_carry_policy_for_tools_loaded_in_earlier_turns(
+    catalog: Any, carry: str, cap: int, expected: list[str]
+) -> None:
+    router = _FixedRouter([ASTRO, "svelte.list-sections"], [FLIGHT])
+    model = scripted(AIMessage("a"), AIMessage("b"))
+    options = RouterOptions(carry=carry, carry_cap=cap)
+    runs = run_conversation(model, TURNS, "router_first", catalog, router, options=options)
+    assert runs[1].initially_loaded == expected
+
+
+def test_request_tools_reroutes_mid_task(catalog: Any) -> None:
+    router = _FixedRouter(["svelte.list-sections"], [ASTRO])
+    model = scripted(
+        call("request_tools", {"need": "search the Astro documentation"}, 0),
+        call("astro-docs__search_astro_docs", {"query": "x"}, 1),
+        AIMessage("done"),
+    )
+    options = RouterOptions(request_tools=True, search_fallback=False)
+    run = run_agent(model, Q["question"], "router_first", catalog, router, options=options)
+    row = score_row(Q, "router_first", "fake:free", run)
+    assert router.calls == 2 and "search the Astro documentation" in router.questions[1]
+    assert row["router_calls"] == 2 and row["request_tools_calls"] == 1
+    assert [e["source"] for e in row["router_events"]] == ["user_message", "request_tools"]
+    assert row["top1_correct"] and row["unloaded_tool_calls"] == []
+    assert row["tool_search_calls"] == 0  # search fallback was switched off
+    assert row["router_latency_ms"] == 10.0 and row["router_call_latencies_ms"] == [5.0, 5.0]
+    assert row["router_hit"] is False  # the upfront pick missed; request_tools fixed it
+
+
+def test_request_tools_is_optional(catalog: Any) -> None:
+    router = _FixedRouter(["svelte.list-sections"])
+    model = scripted(call("astro-docs__search_astro_docs", {"query": "x"}, 0), AIMessage("done"))
+    run = run_agent(model, Q["question"], "router_first", catalog, router)
+    row = score_row(Q, "router_first", "fake:free", run)
+    # not loaded and not requested: the call is refused, like the API would
+    assert row["unloaded_tool_calls"] == ["astro-docs__search_astro_docs"]
+    assert row["first_tool"] is None and router.calls == 1
+
+
+def _router_agent(catalog: Any, router: Any, model: Any, checkpointer: Any) -> Any:
+    from tooldiscoverybench.harness.agent import build_agent
+    from tooldiscoverybench.harness.middleware import ToolRouterMiddleware
+    from tooldiscoverybench.harness.tools import CallLog
+
+    mw = ToolRouterMiddleware(router, catalog.tools, request_tools=True)
+    agent = build_agent(
+        model, catalog.stubs(CallLog()), "router_first", 8, mw, checkpointer=checkpointer
+    )
+    return agent, mw
+
+
+def test_routing_state_lives_in_graph_state_per_thread(catalog: Any) -> None:
+    from langchain_core.messages import HumanMessage
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    saver = InMemorySaver()
+    router = _FixedRouter([ASTRO], [FLIGHT])
+    agent, _ = _router_agent(catalog, router, scripted(AIMessage("a")), saver)
+    one = {"configurable": {"thread_id": "one"}}
+    agent.invoke({"messages": [HumanMessage(TURNS[0])]}, one)
+    # a NEW agent and middleware instance on the same checkpointer picks the thread up
+    agent2, mw2 = _router_agent(catalog, router, scripted(AIMessage("b"), AIMessage("c")), saver)
+    state = agent2.get_state(one).values
+    assert state["tdb_turn_picks"] == ["astro-docs__search_astro_docs"]
+    assert mw2.loaded(state) == ["astro-docs__search_astro_docs"]
+    agent2.invoke({"messages": [HumanMessage(TURNS[1])]}, one)
+    state = agent2.get_state(one).values
+    assert [e["source"] for e in state["tdb_router_events"]] == ["user_message"] * 2
+    assert state["tdb_carry"] == ["astro-docs__search_astro_docs"]
+    assert state["tdb_turn_picks"] == ["kiwi__search-flight"]
+    # another thread has its own routing state
+    two = {"configurable": {"thread_id": "two"}}
+    agent2.invoke({"messages": [HumanMessage("unrelated")]}, two)
+    assert len(agent2.get_state(two).values["tdb_router_events"]) == 1
+    assert router.calls == 3
+
+
+async def test_async_invocation_routes_too(catalog: Any) -> None:
+    from langchain_core.messages import HumanMessage
+
+    router = _FixedRouter(["svelte.list-sections"], [ASTRO])
+    model = scripted(
+        call("request_tools", {"need": "astro docs"}, 0),
+        call("astro-docs__search_astro_docs", {"query": "x"}, 1),
+        AIMessage("done"),
+    )
+    agent, mw = _router_agent(catalog, router, model, None)
+    state = await agent.ainvoke({"messages": [HumanMessage(Q["question"])]})
+    assert router.calls == 2
+    assert [e["source"] for e in state["tdb_router_events"]] == ["user_message", "request_tools"]
+    assert mw.loaded(state) == ["svelte__list-sections", "astro-docs__search_astro_docs"]
+    assert "[stub] astro-docs.search_astro_docs" in state["messages"][-2].content
+
+
+def test_jev_spend_cap_stops_before_overspending(catalog: Any) -> None:
+    from tooldiscoverybench.core.models import RouteResult
+    from tooldiscoverybench.harness.routing import BudgetExhaustedError
+
+    class FakeDecisions:
+        async def route(self, question: str, tools: Any, server_desc: Any) -> RouteResult:
+            return RouteResult([(ASTRO, 0.9), (FLIGHT, 0.1)], 12.0, cost_usd=0.4)
+
+    jev = JevDecisionRouter.__new__(JevDecisionRouter)
+    jev.router, jev.server_desc, jev.k, jev.model_id = FakeDecisions(), {}, 1, "jev"
+    jev.max_spend_usd, jev.spent_usd, jev.calls, jev._worst_call_usd = 1.0, 0.0, 0, 0.001
+    for _ in range(2):
+        pick = jev.pick("q", catalog.tools)
+    assert pick.tool_ids == [ASTRO] and pick.raw["cost_usd"] == 0.4
+    assert jev.spent_usd == pytest.approx(0.8)
+    with pytest.raises(BudgetExhaustedError):  # 0.8 + another 0.4 would pass the $1 cap
+        jev.pick("q", catalog.tools)
+    assert jev.calls == 2
+
+
+def test_conversations_are_dev_only_and_follow_ups_need_another_tool() -> None:
+    from tooldiscoverybench.harness.runner import build_conversations
+
+    single = {q["qid"] for q in sample_questions()}
+    convs = build_conversations(exclude_qids=single)
+    assert convs == build_conversations(exclude_qids=single)  # deterministic
+    test = set(Path(TEST_QIDS).read_text().split())
+    qids = [t["qid"] for c in convs for t in c["turns"]]
+    assert len(convs) == 15 and len(qids) == 32 == len(set(qids))
+    assert not set(qids) & test and not set(qids) & single
+    assert {len(c["turns"]) for c in convs} == {2, 3}
+    for c in convs:
+        for a, b in zip(c["turns"], c["turns"][1:], strict=False):
+            assert not set(a["gold"]) & set(b["gold"])
+        if c["kind"] == "same_server":
+            assert len({t["gold"][0].split(".")[0] for t in c["turns"]}) == 1
+        if c["kind"] == "ends_no_tool":
+            assert c["turns"][-1]["no_tool"]
+
+
+def test_multiturn_summary_reports_complete_cells_only(tmp_path: Path) -> None:
+    import json
+
+    from tooldiscoverybench.harness.report import _dist, write_multiturn_summary
+
+    assert _dist([1.0, 2.0, 3.0, 4.0, 10.0]) == "4.0 / 3.0 / 10.0"
+    base = {
+        "no_tool": False,
+        "top1_correct": True,
+        "gold_ever_called": True,
+        "llm_calls": 3,
+        "total_tool_calls": 1,
+        "tool_search_calls": 0,
+        "input_tokens": 100,
+        "output_tokens": 5,
+        "latency_ms": 2000.0,
+        "error": None,
+        "model": "m",
+        "router_calls": 1,
+        "router_call_latencies_ms": [250.0],
+        "router_latency_ms": 250.0,
+        "router_input_tokens": 40,
+        "request_tools_calls": 0,
+        "router_cost_usd": 0.0002,
+    }
+    keys = ["mt-01#t1", "mt-01#t2"]
+    rows = [
+        {**base, "setup": "router_first_jev", "qid": k, "conv_id": "mt-01", "turn": i}
+        for i, k in enumerate(keys, 1)
+    ]
+    rows.append({**base, "setup": "all_tools", "qid": keys[0], "conv_id": "mt-01", "turn": 1})
+    (tmp_path / "multiturn_results.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
+    text = write_multiturn_summary(tmp_path, keys, {"n_conversations": 1})
+    assert "| router_first_jev | m | 2 | 0 | 1.00 (2/2) |" in text
+    assert "0.25 / 0.25 / 0.25" in text and "0.000200" in text  # router latency, cost per turn
+    assert "| router_first_jev | m | 1 | 0 | 1.00 (1/1) | 1.00 (2/2) | 2.00 |" in text
+    assert "all_tools / m: 1/2 questions (excluded)" in text

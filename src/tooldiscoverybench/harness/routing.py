@@ -34,6 +34,12 @@ ROUTER_PROMPT = (
 ROUTER_LABELS = {"free_llm": "free-model router", "jev": "Jev (paid)", "bm25": "BM25 shortlist"}
 #: ``metadata.lc_source`` of router model calls, so usage counters can split them out
 ROUTER_SOURCE = "tdb_router"
+#: charged against the Jev spend cap when OpenRouter reports no cost for a call
+UNREPORTED_COST_USD = 0.001
+
+
+class BudgetExhaustedError(RuntimeError):
+    """A run must stop cleanly: free-model quota or the paid-router spend cap is used up."""
 
 
 @dataclass
@@ -148,6 +154,8 @@ class JevDecisionRouter:
         k: int = 3,
         model: str = "typesafe/jev-1.13",
         allow_paid: bool = False,
+        max_spend_usd: float = 1.0,
+        spent_usd: float = 0.0,
     ) -> None:
         if not allow_paid:
             raise PermissionError(
@@ -168,9 +176,23 @@ class JevDecisionRouter:
         self.server_desc = server_desc
         self.k = k
         self.model_id = model
+        self.max_spend_usd = max_spend_usd
+        self.spent_usd = spent_usd  # spend so far, including earlier runs (from result files)
+        self.calls = 0
+        self._worst_call_usd = UNREPORTED_COST_USD
 
     def pick(self, question: str, tools: list[Tool]) -> RouterPick:
+        if self.spent_usd + self._worst_call_usd > self.max_spend_usd:
+            raise BudgetExhaustedError(
+                f"Jev spend cap: ${self.spent_usd:.4f} spent, next call could exceed "
+                f"${self.max_spend_usd:.2f}"
+            )
         res = asyncio.run(self.router.route(question, tools, self.server_desc))
+        # a call with no reported cost is charged a conservative estimate against the cap
+        cost = res.cost_usd if res.cost_usd is not None else UNREPORTED_COST_USD * res.calls
+        self.spent_usd += cost
+        self.calls += res.calls
+        self._worst_call_usd = max(self._worst_call_usd, cost)
         return RouterPick(
             [tid for tid, _ in res.ranked[: self.k]],
             res.latency_ms,
@@ -180,5 +202,5 @@ class JevDecisionRouter:
             input_tokens=res.input_tokens or 0,
             output_tokens=res.output_tokens or 0,
             error=res.error,
-            raw={"cost_usd": res.cost_usd},
+            raw={"cost_usd": res.cost_usd, "spent_usd": round(self.spent_usd, 6)},
         )
