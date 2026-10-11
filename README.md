@@ -404,7 +404,7 @@ that logs the call and returns a short canned result):
 | `regex_search` | tools deferred; `tool_search(pattern, limit=5)` mirrors Anthropic's regex Tool Search Tool |
 | `router_first` | `ToolRouterMiddleware`: a router pick loads 3 tools on every new user message (and on `request_tools`, when enabled); BM25 `tool_search` is the fallback. Router: a free model |
 | `router_first_jev` | the same middleware with the paid Jev decision router (`typesafe/jev-1.13`); needs `--allow-paid-router`, spend capped at $1 |
-| `langchain_selector` | optional, not in the default run: LangChain's `LLMToolSelectorMiddleware` (re-selects 3 tools before every model call) |
+| `langchain_selector` | LangChain's built-in `LLMToolSelectorMiddleware`, selector model = the agent model, `max_tools=3`. It re-selects before **every** model call, as it does natively; each selector call is counted in LLM calls, tokens, latency and cost. It chooses among the 31 catalog tools only (the agent's own built-ins are always kept) |
 
 Tool search follows Anthropic's
 [Tool Search Tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool):
@@ -487,6 +487,23 @@ tests whether routing and loaded tools keep up when the topic changes; it does n
 follow-ups that depend on earlier answers. Output: `multiturn_results.jsonl` (one row per
 turn), `multiturn_summary.md`.
 
+**Multi-step suite** (`--suite multistep`): 18 hand-written tasks in
+`harness/multistep.py`. Each is one user request that needs 2-3 different catalog tools in a
+stated order (resolve a library id then query its docs; list AWS regions, check availability,
+then search the docs). Gold is that tool sequence. These labels are the author's, not
+harness-derived like the single-turn gold. The agent gets a multi-step system prompt and the
+stubs tell it to continue with the next step. Scores: first call = first gold tool, all gold
+tools called, called in order, steps correct, wasted calls (real calls beyond one per gold
+tool). Output: `multistep_results.jsonl`, `multistep_summary.md`.
+
+**Timeouts, paid models, budget.** Every model and router request has a hard 90 s limit with
+2 retries, and every task (turn) a 300 s wall-clock cap; a task that exceeds it is recorded
+as a `TaskTimeout` error row and the run moves on. Free models are the default. A paid agent
+model is refused unless it is listed under `paid_models` in the config **and** the run passes
+`--allow-paid-models`. OpenRouter's billed cost is read from every call (`usage.cost`) and
+written per row (`agent_cost_usd`, `router_cost_usd`, `cost_usd`); the run stops before
+recorded paid spend would pass `max_spend_usd`.
+
 **Sample**: dev split of `datasets_v1` only (never `splits/test_qids.txt`), 4 questions per
 gold server x 10 servers + 8 no-tool questions = 48, fixed seed. Agent step cap: 8 model
 calls.
@@ -505,11 +522,18 @@ uv run --extra deepagents python -m tooldiscoverybench.harness --config configs/
 # one model, two questions, as a smoke run:
 uv run --extra deepagents python -m tooldiscoverybench.harness --config configs/harness.yaml \
   --models nvidia/nemotron-3-super-120b-a12b:free --limit 2 --out /tmp/harness-smoke
+# cheap paid agent model, all five methods, the three workflows (single | multiturn | multistep):
+uv run --extra deepagents python -m tooldiscoverybench.harness --config configs/harness.yaml \
+  --models openai/gpt-6-luna --allow-paid-models --allow-paid-router --request-tools \
+  --suite single --max-spend-usd 8 \
+  --setups all_tools bm25_search regex_search langchain_selector router_first_jev
 # re-render tables only:
 uv run --extra deepagents python -m tooldiscoverybench.harness --config configs/harness.yaml --summary-only
 ```
 
-**Results** (one free model, `nvidia/nemotron-3-super-120b-a12b:free`; 48 dev-split
+<!-- PLAN3_RESULTS -->
+
+**Earlier run, free models only** (`nvidia/nemotron-3-super-120b-a12b:free`; 48 dev-split
 questions = 40 answerable + 8 no-tool; router for `router_first` = free-model router
 `apodex/apodex-1.1-mini:free`, **not Jev**; run 2026-10-11; 0 error rows). Full tables:
 `summary.md` in the run directory. A sample of 48 on one model: differences of one or two
