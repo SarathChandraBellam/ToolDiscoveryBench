@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -181,15 +182,26 @@ class JevDecisionRouter:
         self.calls = 0
         self._worst_call_usd = UNREPORTED_COST_USD
 
+    def _run(self, coro: Any) -> Any:
+        """Run on one long-lived event loop: the decisions client is bound to its loop, so
+        ``asyncio.run`` per call breaks the second call. Also safe from a running loop."""
+        loop = getattr(self, "_loop", None)
+        if loop is None:
+            loop = self._loop = asyncio.new_event_loop()
+            threading.Thread(target=loop.run_forever, daemon=True, name="jev-router").start()
+        return asyncio.run_coroutine_threadsafe(coro, loop).result()
+
     def pick(self, question: str, tools: list[Tool]) -> RouterPick:
         if self.spent_usd + self._worst_call_usd > self.max_spend_usd:
             raise BudgetExhaustedError(
                 f"Jev spend cap: ${self.spent_usd:.4f} spent, next call could exceed "
                 f"${self.max_spend_usd:.2f}"
             )
-        res = asyncio.run(self.router.route(question, tools, self.server_desc))
-        # a call with no reported cost is charged a conservative estimate against the cap
-        cost = res.cost_usd if res.cost_usd is not None else UNREPORTED_COST_USD * res.calls
+        res = self._run(self.router.route(question, tools, self.server_desc))
+        # a successful call with no reported cost is charged a conservative estimate
+        cost = res.cost_usd
+        if cost is None:
+            cost = 0.0 if res.error else UNREPORTED_COST_USD * res.calls
         self.spent_usd += cost
         self.calls += res.calls
         self._worst_call_usd = max(self._worst_call_usd, cost)
