@@ -402,7 +402,8 @@ that logs the call and returns a short canned result):
 | `all_tools` | all 31 tools loaded (no discovery; how the gold labels were made) |
 | `bm25_search` | tools deferred; `tool_search(query, limit=5)` mirrors Anthropic's BM25 Tool Search Tool |
 | `regex_search` | tools deferred; `tool_search(pattern, limit=5)` mirrors Anthropic's regex Tool Search Tool |
-| `router_first` | `ToolRouterMiddleware`: ONE upfront router pick loads 3 tools; BM25 `tool_search` is the fallback |
+| `router_first` | `ToolRouterMiddleware`: a router pick loads 3 tools on every new user message (and on `request_tools`, when enabled); BM25 `tool_search` is the fallback. Router: a free model |
+| `router_first_jev` | the same middleware with the paid Jev decision router (`typesafe/jev-1.13`); needs `--allow-paid-router`, spend capped at $1 |
 | `langchain_selector` | optional, not in the default run: LangChain's `LLMToolSelectorMiddleware` (re-selects 3 tools before every model call) |
 
 Tool search follows Anthropic's
@@ -416,13 +417,40 @@ blocks, and refuses calls to tools that were never loaded. All catalog tools are
 (Anthropic suggests keeping the 3-5 most used tools loaded; we don't, so the cost of search
 is visible).
 
-The router middleware uses the same LangChain v1 hook as `LLMToolSelectorMiddleware`
-(`wrap_model_call` + `request.override(tools=...)`) but picks once per run. Routers plug in
-behind one `pick(question, tools)` interface: `free_llm` (one chat call to a free model,
-labelled **free-model router**, not Jev), `bm25` (BM25 shortlist, no LLM call) and `jev`
-(the real Jev through the repo's decision-router path; paid, refused unless
-`--allow-paid-router`). The repo's `/api/alpha/decisions` path only serves decision models,
-so it cannot run a free model; the free router is a plain chat completion.
+**Routing as part of the agent** (`ToolRouterMiddleware`). It narrows the tools the way
+`LLMToolSelectorMiddleware` does (`wrap_model_call` + `request.override(tools=...)`), but
+decides *when* to route itself:
+
+- **Every new user message.** `before_model` routes once per user message (it records which
+  message it routed), not once per run and not before every model call. The router gets the
+  new message plus a short summary of the last two turns (each earlier request, cut to 200
+  characters, and the tools used for it).
+- **Mid-task, on request.** With `request_tools: true` the agent gets
+  `request_tools(need)`: when no loaded tool fits it describes what it is missing, the same
+  router is called again and its picks are loaded. Each call is counted as a router call.
+- **`tool_search` as last resort.** The BM25 search stays available unless
+  `search_fallback: false`.
+- **State in the graph.** The last routed message, the turn's picks, the tools carried over
+  and one event per router call (source, picks, latency, tokens, cost, error) live in the
+  agent graph state (`state_schema`), so routing is per thread and survives a checkpointer.
+  `DeferredToolsMiddleware` derives its loaded set from the message history, for the same
+  reason. Sync and async hooks are both implemented (`abefore_model`, `awrap_model_call`,
+  `awrap_tool_call`).
+- **Tools from earlier turns** (`carry`): `cap` (default) keeps the 5 most recently loaded
+  tools and adds the new picks, so a follow-up that reuses a tool needs nothing new and the
+  loaded set cannot grow without bound; `keep` keeps everything ever loaded on the thread;
+  `replace` loads only the new turn's picks.
+
+Routers plug in behind one `pick(text, tools)` interface: `free_llm` (one chat call to a free
+model, labelled **free-model router**, not Jev), `bm25` (BM25 shortlist, no LLM call) and
+`jev`, used by the `router_first_jev` setup. Jev runs through the repo's existing
+decision-router code (`OpenRouterDecisionsRouter`, `/api/alpha/decisions`) with model
+`typesafe/jev-1.13`; the id `typesafe/jev-router` is listed by OpenRouter but that endpoint
+answers "does not exist" for it. Jev is the only paid call: it is refused without
+`--allow-paid-router`, OpenRouter's reported cost is logged per call, and the run stops
+before total Jev spend in the output directory would pass `jev_max_spend_usd` (default $1).
+The decisions endpoint only serves decision models, so the free router is a plain chat
+completion.
 
 **What LangChain v1 already ships, and why the harness adds two middlewares.** Checked
 against the installed source (`langchain` 1.4.4, `deepagents` 0.7.23) and the
@@ -436,7 +464,8 @@ against the installed source (`langchain` 1.4.4, `deepagents` 0.7.23) and the
 | [`ModelRetryMiddleware`](https://docs.langchain.com/oss/python/langchain/middleware/built-in#model-retry) | retries failed model calls with exponential backoff | no. The OpenAI client already retries 429s and honours `Retry-After`; a second retry layer is not needed |
 | [`ModelCallLimitMiddleware`](https://docs.langchain.com/oss/python/langchain/middleware/built-in#model-call-limit) | caps model calls per run | yes, the 8-step cap (`exit_behavior="end"`) |
 
-So no built-in middleware gives "one upfront pick by a pluggable router, search as fallback".
+So no built-in middleware gives "a pick by a pluggable router per user message, search as
+fallback".
 `harness/middleware.py` adds `DeferredToolsMiddleware` and `ToolRouterMiddleware` on the same
 [custom middleware](https://docs.langchain.com/oss/python/langchain/middleware/custom) hooks
 (`wrap_model_call`, `wrap_tool_call`). Skills come from deepagents'
@@ -447,6 +476,16 @@ So no built-in middleware gives "one upfront pick by a pluggable router, search 
 `SkillsMiddleware` in **every** setup. deepagents' write/exec built-ins, `ls`/`glob`/`grep`
 and the general-purpose subagent are hidden; `read_file` (needed to open a skill) and
 `write_todos` stay.
+
+**Multi-turn suite** (`--suite multiturn`): 15 conversations, 32 turns, built from dev-split
+questions that are not in the single-turn sample: 5 where the follow-up needs another tool
+of the same server, 5 that switch server, 3 that end on a request no tool can do, and 2 with
+three turns. Every follow-up needs a different tool than the turn before and each turn keeps
+its own gold. A conversation runs on one agent thread (checkpointer), with the step cap per
+turn. The turns are independent questions asked in sequence, not scripted dialogues, so this
+tests whether routing and loaded tools keep up when the topic changes; it does not test
+follow-ups that depend on earlier answers. Output: `multiturn_results.jsonl` (one row per
+turn), `multiturn_summary.md`.
 
 **Sample**: dev split of `datasets_v1` only (never `splits/test_qids.txt`), 4 questions per
 gold server x 10 servers + 8 no-tool questions = 48, fixed seed. Agent step cap: 8 model
