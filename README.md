@@ -424,6 +424,24 @@ labelled **free-model router**, not Jev), `bm25` (BM25 shortlist, no LLM call) a
 `--allow-paid-router`). The repo's `/api/alpha/decisions` path only serves decision models,
 so it cannot run a free model; the free router is a plain chat completion.
 
+**What LangChain v1 already ships, and why the harness adds two middlewares.** Checked
+against the installed source (`langchain` 1.4.4, `deepagents` 0.7.23) and the
+[built-in middleware docs](https://docs.langchain.com/oss/python/langchain/middleware/built-in):
+
+| LangChain middleware | what it does | used here? |
+|---|---|---|
+| [`LLMToolSelectorMiddleware`](https://docs.langchain.com/oss/python/langchain/middleware/built-in#llm-tool-selector) | an LLM picks up to `max_tools` of the registered tools (`always_include` exempts some) and the request is narrowed with `request.override(tools=...)` | only as the optional `langchain_selector` setup. It re-selects before **every** model call (a router call per agent step, not one upfront), needs `with_structured_output` on the selector model, raises if the model names an unknown tool, and takes a chat model only, so BM25 or a decision router such as Jev cannot be plugged in |
+| [`ProviderToolSearchMiddleware`](https://docs.langchain.com/oss/python/langchain/middleware/built-in#provider-tool-search) | marks tools `defer_loading` and injects the provider's **server-side** tool search (`tool_search_tool_bm25_20251119` on Anthropic, `tool_search` on OpenAI) | no. Anthropic and OpenAI models only (other providers raise `ValueError`), so it cannot run on free OpenRouter models, and it has no regex option. `DeferredToolsMiddleware` + the `tool_search` tool reproduce the behaviour client side |
+| [`ModelFallbackMiddleware`](https://docs.langchain.com/oss/python/langchain/middleware/built-in#model-fallback) | on a model error, retries the call on the next model in a list | no. It routes between **models**, not tools, and falling back would mix two models inside one (setup, model) cell |
+| [`ModelRetryMiddleware`](https://docs.langchain.com/oss/python/langchain/middleware/built-in#model-retry) | retries failed model calls with exponential backoff | no. The OpenAI client already retries 429s and honours `Retry-After`; a second retry layer is not needed |
+| [`ModelCallLimitMiddleware`](https://docs.langchain.com/oss/python/langchain/middleware/built-in#model-call-limit) | caps model calls per run | yes, the 8-step cap (`exit_behavior="end"`) |
+
+So no built-in middleware gives "one upfront pick by a pluggable router, search as fallback".
+`harness/middleware.py` adds `DeferredToolsMiddleware` and `ToolRouterMiddleware` on the same
+[custom middleware](https://docs.langchain.com/oss/python/langchain/middleware/custom) hooks
+(`wrap_model_call`, `wrap_tool_call`). Skills come from deepagents'
+[skills](https://docs.langchain.com/oss/python/deepagents/skills) support.
+
 **Skills**: four small `SKILL.md` skills (`repo-research`, `library-docs`, `cloud-docs`,
 `web-and-travel-lookup`) in `harness/workspace/skills/`, loaded through deepagents'
 `SkillsMiddleware` in **every** setup. deepagents' write/exec built-ins, `ls`/`glob`/`grep`
