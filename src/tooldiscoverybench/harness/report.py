@@ -167,6 +167,10 @@ def _cost(rows: list[dict[str, Any]]) -> str:
     return f"{sum(costs) / len(rows):.6f}"
 
 
+def _discovery(r: dict[str, Any]) -> int:
+    return int(r.get("discovery_calls", 0) or 0) + int(r.get("request_tools_calls", 0) or 0)
+
+
 def _router_calls(r: dict[str, Any]) -> int:
     # rows written before router events existed made exactly router_llm_calls router calls
     return int(r.get("router_calls", r.get("router_llm_calls", 0)) or 0)
@@ -196,8 +200,9 @@ def _comparison(setup: str, model: str, rs: list[dict[str, Any]]) -> dict[str, s
         "top1": _rate([bool(r["top1_correct"]) for r in ans]),
         "gold_ever": _rate([bool(r["gold_ever_called"]) for r in ans]),
         "abstain": _rate([bool(r["top1_correct"]) for r in nt]),
-        "tool_calls": _mean([r["total_tool_calls"] for r in ok])
-        + f" ({_mean([r.get('discovery_calls', 0) + r.get('request_tools_calls', 0) for r in ok])}"
+        # discovery = tool_search + request_tools calls; real = catalog tool calls
+        "tool_calls": _mean([_discovery(r) + r.get("real_tool_calls", 0) for r in ok])
+        + f" ({_mean([_discovery(r) for r in ok])}"
         f" + {_mean([r.get('real_tool_calls', 0) for r in ok])})",
         "wasted": _mean([r.get("wasted_real_calls", 0) for r in ok]),
         "llm_calls": _mean([r["llm_calls"] for r in ok])
