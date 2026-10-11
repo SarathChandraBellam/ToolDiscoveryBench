@@ -386,6 +386,298 @@ latency). To rebuild the combined tables above from several runs, use
 | `TDB_ESCALATE_BELOW`, `TDB_SHORTLIST_K`, `FRONTIER_MODEL_ID` | tuning the preliminary routers |
 | `TYPESAFE_API_KEY`, `OPENAI_API_KEY`, `HF_TOKEN`, AWS credentials / `ANTHROPIC_API_KEY` | routers that are supported but not yet benchmarked (`jev`, `openai_decisions`, `strands`) |
 
+## 🧪 Agent harness simulation (deepagents)
+
+The router tables above score one routing decision. `src/tooldiscoverybench/harness/` asks
+the end-to-end question instead: inside a real agent loop, what does tool discovery cost and
+does the agent still reach the gold tool? It is built on LangChain
+[`deepagents`](https://github.com/langchain-ai/deepagents) and runs on **free** OpenRouter
+models only.
+
+**Setups** (same questions, same catalog of the 31 real tools, every tool executed by a stub
+that logs the call and returns a short canned result):
+
+| setup | what the model sees |
+|---|---|
+| `all_tools` | all 31 tools loaded (no discovery; how the gold labels were made) |
+| `bm25_search` | tools deferred; `tool_search(query, limit=5)` mirrors Anthropic's BM25 Tool Search Tool |
+| `regex_search` | tools deferred; `tool_search(pattern, limit=5)` mirrors Anthropic's regex Tool Search Tool |
+| `router_first` | `ToolRouterMiddleware`: a router pick loads 3 tools on every new user message (and on `request_tools`, when enabled); BM25 `tool_search` is the fallback. Router: a free model |
+| `router_first_jev` | the same middleware with the paid Jev decision router (`typesafe/jev-1.13`); needs `--allow-paid-router`, spend capped at $1 |
+| `langchain_selector` | LangChain's built-in `LLMToolSelectorMiddleware`, selector model = the agent model, `max_tools=3`. It re-selects before **every** model call, as it does natively; each selector call is counted in LLM calls, tokens, latency and cost. It chooses among the 31 catalog tools only (the agent's own built-ins are always kept) |
+
+Tool search follows Anthropic's
+[Tool Search Tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool):
+both variants match tool names, descriptions, argument names and argument descriptions;
+regex is Python `re.search`, case-insensitive, max 200 chars; BM25 takes a natural-language
+query (max 500 chars, scored with the repo's BM25); each returns up to 5 tool references
+(the model may pass `limit`). Referenced tools are then *loaded*: `DeferredToolsMiddleware`
+adds their full definitions to the next model call, like the API expanding `tool_reference`
+blocks, and refuses calls to tools that were never loaded. All catalog tools are deferred
+(Anthropic suggests keeping the 3-5 most used tools loaded; we don't, so the cost of search
+is visible).
+
+**Routing as part of the agent** (`ToolRouterMiddleware`). It narrows the tools the way
+`LLMToolSelectorMiddleware` does (`wrap_model_call` + `request.override(tools=...)`), but
+decides *when* to route itself:
+
+- **Every new user message.** `before_model` routes once per user message (it records which
+  message it routed), not once per run and not before every model call. The router gets the
+  new message plus a short summary of the last two turns (each earlier request, cut to 200
+  characters, and the tools used for it).
+- **Mid-task, on request.** With `request_tools: true` the agent gets
+  `request_tools(need)`: when no loaded tool fits it describes what it is missing, the same
+  router is called again and its picks are loaded. Each call is counted as a router call.
+- **`tool_search` as last resort.** The BM25 search stays available unless
+  `search_fallback: false`.
+- **State in the graph.** The last routed message, the turn's picks, the tools carried over
+  and one event per router call (source, picks, latency, tokens, cost, error) live in the
+  agent graph state (`state_schema`), so routing is per thread and survives a checkpointer.
+  `DeferredToolsMiddleware` derives its loaded set from the message history, for the same
+  reason. Sync and async hooks are both implemented (`abefore_model`, `awrap_model_call`,
+  `awrap_tool_call`).
+- **Tools from earlier turns** (`carry`): `cap` (default) keeps the 5 most recently loaded
+  tools and adds the new picks, so a follow-up that reuses a tool needs nothing new and the
+  loaded set cannot grow without bound; `keep` keeps everything ever loaded on the thread;
+  `replace` loads only the new turn's picks.
+
+Routers plug in behind one `pick(text, tools)` interface: `free_llm` (one chat call to a free
+model, labelled **free-model router**, not Jev), `bm25` (BM25 shortlist, no LLM call) and
+`jev`, used by the `router_first_jev` setup. Jev runs through the repo's existing
+decision-router code (`OpenRouterDecisionsRouter`, `/api/alpha/decisions`) with model
+`typesafe/jev-1.13`; the id `typesafe/jev-router` is listed by OpenRouter but that endpoint
+answers "does not exist" for it. Jev is the only paid call: it is refused without
+`--allow-paid-router`, OpenRouter's reported cost is logged per call, and the run stops
+before total Jev spend in the output directory would pass `jev_max_spend_usd` (default $1).
+The decisions endpoint only serves decision models, so the free router is a plain chat
+completion.
+
+**What LangChain v1 already ships, and why the harness adds two middlewares.** Checked
+against the installed source (`langchain` 1.4.4, `deepagents` 0.7.23) and the
+[built-in middleware docs](https://docs.langchain.com/oss/python/langchain/middleware/built-in):
+
+| LangChain middleware | what it does | used here? |
+|---|---|---|
+| [`LLMToolSelectorMiddleware`](https://docs.langchain.com/oss/python/langchain/middleware/built-in#llm-tool-selector) | an LLM picks up to `max_tools` of the registered tools (`always_include` exempts some) and the request is narrowed with `request.override(tools=...)` | only as the optional `langchain_selector` setup. It re-selects before **every** model call (a router call per agent step, not one upfront), needs `with_structured_output` on the selector model, raises if the model names an unknown tool, and takes a chat model only, so BM25 or a decision router such as Jev cannot be plugged in |
+| [`ProviderToolSearchMiddleware`](https://docs.langchain.com/oss/python/langchain/middleware/built-in#provider-tool-search) | marks tools `defer_loading` and injects the provider's **server-side** tool search (`tool_search_tool_bm25_20251119` on Anthropic, `tool_search` on OpenAI) | no. Anthropic and OpenAI models only (other providers raise `ValueError`), so it cannot run on free OpenRouter models, and it has no regex option. `DeferredToolsMiddleware` + the `tool_search` tool reproduce the behaviour client side |
+| [`ModelFallbackMiddleware`](https://docs.langchain.com/oss/python/langchain/middleware/built-in#model-fallback) | on a model error, retries the call on the next model in a list | no. It routes between **models**, not tools, and falling back would mix two models inside one (setup, model) cell |
+| [`ModelRetryMiddleware`](https://docs.langchain.com/oss/python/langchain/middleware/built-in#model-retry) | retries failed model calls with exponential backoff | no. The OpenAI client already retries 429s and honours `Retry-After`; a second retry layer is not needed |
+| [`ModelCallLimitMiddleware`](https://docs.langchain.com/oss/python/langchain/middleware/built-in#model-call-limit) | caps model calls per run | yes, the 8-step cap (`exit_behavior="end"`) |
+
+So no built-in middleware gives "a pick by a pluggable router per user message, search as
+fallback".
+`harness/middleware.py` adds `DeferredToolsMiddleware` and `ToolRouterMiddleware` on the same
+[custom middleware](https://docs.langchain.com/oss/python/langchain/middleware/custom) hooks
+(`wrap_model_call`, `wrap_tool_call`). Skills come from deepagents'
+[skills](https://docs.langchain.com/oss/python/deepagents/skills) support.
+
+**Skills**: four small `SKILL.md` skills (`repo-research`, `library-docs`, `cloud-docs`,
+`web-and-travel-lookup`) in `harness/workspace/skills/`, loaded through deepagents'
+`SkillsMiddleware` in **every** setup. deepagents' write/exec built-ins, `ls`/`glob`/`grep`
+and the general-purpose subagent are hidden; `read_file` (needed to open a skill) and
+`write_todos` stay.
+
+**Multi-turn suite** (`--suite multiturn`): 15 conversations, 32 turns, built from dev-split
+questions that are not in the single-turn sample: 5 where the follow-up needs another tool
+of the same server, 5 that switch server, 3 that end on a request no tool can do, and 2 with
+three turns. Every follow-up needs a different tool than the turn before and each turn keeps
+its own gold. A conversation runs on one agent thread (checkpointer), with the step cap per
+turn. The turns are independent questions asked in sequence, not scripted dialogues, so this
+tests whether routing and loaded tools keep up when the topic changes; it does not test
+follow-ups that depend on earlier answers. Output: `multiturn_results.jsonl` (one row per
+turn), `multiturn_summary.md`.
+
+**Multi-step suite** (`--suite multistep`): 18 hand-written tasks in
+`harness/multistep.py`. Each is one user request that needs 2-3 different catalog tools in a
+stated order (resolve a library id then query its docs; list AWS regions, check availability,
+then search the docs). Gold is that tool sequence. These labels are the author's, not
+harness-derived like the single-turn gold. The agent gets a multi-step system prompt and the
+stubs tell it to continue with the next step. Scores: first call = first gold tool, all gold
+tools called, called in order, steps correct, wasted calls (real calls beyond one per gold
+tool). Output: `multistep_results.jsonl`, `multistep_summary.md`.
+
+**Timeouts, paid models, budget.** Every model and router request has a hard 90 s limit with
+2 retries, and every task (turn) a 300 s wall-clock cap; a task that exceeds it is recorded
+as a `TaskTimeout` error row and the run moves on. Free models are the default. A paid agent
+model is refused unless it is listed under `paid_models` in the config **and** the run passes
+`--allow-paid-models`. OpenRouter's billed cost is read from every call (`usage.cost`) and
+written per row (`agent_cost_usd`, `router_cost_usd`, `cost_usd`); the run stops before
+recorded paid spend would pass `max_spend_usd`.
+
+**Sample**: dev split of `datasets_v1` only (never `splits/test_qids.txt`), 4 questions per
+gold server x 10 servers + 8 no-tool questions = 48, fixed seed. Agent step cap: 8 model
+calls.
+
+**Metrics** per (setup, model, question), in `results.jsonl`: first real tool call = gold
+(top-1), gold reached, ended with gold, tool calls split into discovery (`tool_search`) and
+real calls, wrong real calls before gold (wasted), calls-to-gold, LLM calls, input/output
+tokens (usage metadata), latency, router calls/tokens/latency on their own and inside the
+totals, router fallback, errors. `summary.md` has an accuracy table, an efficiency table and
+a no-tool (abstention) table, over complete (setup, model) cells only.
+
+```bash
+uv sync --extra deepagents
+export OPENROUTER_API_KEY=...          # free models only; the harness refuses other ids
+uv run --extra deepagents python -m tooldiscoverybench.harness --config configs/harness.yaml
+# one model, two questions, as a smoke run:
+uv run --extra deepagents python -m tooldiscoverybench.harness --config configs/harness.yaml \
+  --models nvidia/nemotron-3-super-120b-a12b:free --limit 2 --out /tmp/harness-smoke
+# cheap paid agent model, all five methods, the three workflows (single | multiturn | multistep):
+uv run --extra deepagents python -m tooldiscoverybench.harness --config configs/harness.yaml \
+  --models openai/gpt-6-luna --allow-paid-models --allow-paid-router --request-tools \
+  --suite single --max-spend-usd 8 \
+  --setups all_tools bm25_search regex_search langchain_selector router_first_jev
+# re-render tables only:
+uv run --extra deepagents python -m tooldiscoverybench.harness --config configs/harness.yaml --summary-only
+```
+
+**Results: five methods, three workflows, one paid agent model** (`openai/gpt-6-luna`, run
+2026-10-11; router for `router_first_jev` = Jev `typesafe/jev-1.13`; `request_tools` on,
+`tool_search` fallback on; selector for `langchain_selector` = the agent model, `max_tools=3`).
+Rates are `mean (count/n)`; costs are OpenRouter's billed cost. Only complete cells. One
+model and small samples: differences of one or two tasks are noise.
+
+#### A. single_turn (48 questions: 40 answerable, 8 no-tool)
+
+| setup | tasks | errors | first call correct | gold reached | correct abstention | tool calls/task (discovery + real) | wasted real calls/task | LLM calls/task (of which router/selector) | input tok/task | output tok/task | router/selector latency per call s (mean / p50 / p90) | task latency s (mean / p50 / p90) | router/selector cost $/task | billed cost $/task (agent + router) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| all_tools | 48 | 0 | 0.70 (28/40) | 0.72 (29/40) | 1.00 (8/8) | 0.71 (0.00 + 0.71) | 0.04 | 3.67 (0.00) | 39,053 | 187 | – | 11.5 / 6.2 / 16.4 | – | 0.000570 |
+| bm25_search | 48 | 0 | 0.72 (29/40) | 0.72 (29/40) | 1.00 (8/8) | 2.69 (1.96 + 0.73) | 0.06 | 4.21 (0.00) | 12,329 | 229 | – | 10.0 / 7.0 / 13.2 | – | 0.000693 |
+| regex_search | 48 | 0 | 0.55 (22/40) | 0.55 (22/40) | 1.00 (8/8) | 3.10 (2.58 + 0.52) | 0.06 | 4.94 (0.00) | 9,663 | 240 | – | 10.6 / 8.4 / 14.0 | – | 0.000417 |
+| langchain_selector | 48 | 1 | 0.88 (35/40) | 0.95 (38/40) | 1.00 (8/8) | 0.91 (0.00 + 0.91) | 0.09 | 4.98 (2.49) | 17,562 | 321 | 3.35 / 2.21 / 3.32 | 14.2 / 9.8 / 15.1 | 0.000227 | 0.000436 |
+| router_first_jev | 48 | 0 | 0.82 (33/40) | 0.88 (35/40) | 0.88 (7/8) | 1.88 (0.98 + 0.90) | 0.15 | 4.79 (1.35) | 13,621 | 186 | 0.19 / 0.17 / 0.24 | 8.1 / 6.1 / 8.7 | 0.000139 | 0.000779 |
+
+#### B. multi_turn (15 conversations, 32 turns; a task is one turn)
+
+| setup | tasks | errors | first call correct | gold reached | correct abstention | tool calls/task (discovery + real) | wasted real calls/task | LLM calls/task (of which router/selector) | input tok/task | output tok/task | router/selector latency per call s (mean / p50 / p90) | task latency s (mean / p50 / p90) | router/selector cost $/task | billed cost $/task (agent + router) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| all_tools | 32 | 0 | 0.66 (19/29) | 0.69 (20/29) | 1.00 (3/3) | 0.91 (0.00 + 0.91) | 0.22 | 3.41 (0.00) | 37,343 | 267 | – | 10.9 / 5.5 / 18.8 | – | 0.000571 |
+| bm25_search | 32 | 0 | 0.62 (18/29) | 0.62 (18/29) | 1.00 (3/3) | 2.66 (1.91 + 0.75) | 0.16 | 4.38 (0.00) | 18,118 | 255 | – | 13.3 / 6.3 / 15.5 | – | 0.001002 |
+| regex_search | 32 | 0 | 0.55 (16/29) | 0.59 (17/29) | 1.00 (3/3) | 3.03 (2.38 + 0.66) | 0.09 | 4.59 (0.00) | 12,698 | 211 | – | 8.1 / 8.3 / 12.7 | – | 0.000508 |
+| langchain_selector | 32 | 0 | 0.90 (26/29) | 0.93 (27/29) | 1.00 (3/3) | 0.94 (0.00 + 0.94) | 0.09 | 4.69 (2.34) | 17,135 | 345 | 2.68 / 2.59 / 3.73 | 14.1 / 11.5 / 17.8 | 0.000214 | 0.000525 |
+| router_first_jev | 32 | 0 | 0.83 (24/29) | 0.90 (26/29) | 1.00 (3/3) | 1.50 (0.56 + 0.94) | 0.12 | 4.12 (1.25) | 12,424 | 193 | 0.21 / 0.18 / 0.26 | 8.8 / 4.9 / 10.6 | 0.000130 | 0.000666 |
+
+Per conversation (sums over the turns, then mean):
+
+| setup | conversations | with an error | every turn's first call correct | turns correct | router calls | request_tools calls | fallback / tool_search calls | LLM calls | input tok | output tok | latency s (mean / p50 / p90) | router s | router cost $ | total cost $ |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| all_tools | 15 | 0 | 0.40 (6/15) | 0.69 (22/32) | 0.00 | 0.00 | 0.00 | 7.27 | 79,664 | 570 | 23.2 / 16.4 / 38.6 | 0.00 | – | 0.001219 |
+| bm25_search | 15 | 0 | 0.40 (6/15) | 0.66 (21/32) | 0.00 | 0.00 | 4.07 | 9.33 | 38,652 | 544 | 28.5 / 16.6 / 107.7 | 0.00 | – | 0.002138 |
+| regex_search | 15 | 0 | 0.40 (6/15) | 0.59 (19/32) | 0.00 | 0.00 | 5.07 | 9.80 | 27,089 | 451 | 17.3 / 17.8 / 26.3 | 0.00 | – | 0.001084 |
+| langchain_selector | 15 | 0 | 0.80 (12/15) | 0.91 (29/32) | 5.00 | 0.00 | 0.00 | 10.00 | 36,554 | 736 | 30.0 / 26.7 / 36.1 | 13.42 | 0.000457 | 0.001119 |
+| router_first_jev | 15 | 0 | 0.67 (10/15) | 0.84 (27/32) | 2.67 | 0.53 | 0.67 | 8.80 | 26,505 | 411 | 18.7 / 13.1 / 19.7 | 0.57 | 0.000277 | 0.001422 |
+
+#### C. multi_step (18 tasks, 2-3 tools in sequence)
+
+| setup | tasks | errors | first call = first gold tool | all gold tools called | all called, in order | steps correct | tool calls/task (discovery + real) | wasted real calls/task | LLM calls/task (of which router/selector) | input tok/task | output tok/task | router/selector latency per call s (mean / p50 / p90) | task latency s (mean / p50 / p90) | billed cost $/task (agent + router) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| all_tools | 18 | 0 | 1.00 (18/18) | 1.00 (18/18) | 1.00 (18/18) | 1.00 (38/38) | 2.17 (0.00 + 2.17) | 0.06 | 3.78 (0.00) | 39,615 | 269 | – | 13.8 / 8.7 / 15.7 | 0.000655 |
+| bm25_search | 18 | 0 | 0.89 (16/18) | 0.89 (16/18) | 0.89 (16/18) | 0.87 (33/38) | 3.56 (1.72 + 1.83) | 0.00 | 5.00 (0.00) | 14,511 | 347 | – | 13.7 / 7.7 / 14.4 | 0.000781 |
+| regex_search | 18 | 0 | 0.72 (13/18) | 0.61 (11/18) | 0.61 (11/18) | 0.66 (25/38) | 5.22 (3.72 + 1.50) | 0.00 | 6.78 (0.00) | 14,916 | 364 | – | 15.9 / 11.1 / 14.5 | 0.000722 |
+| langchain_selector | 18 | 0 | 1.00 (18/18) | 0.94 (17/18) | 0.94 (17/18) | 0.97 (37/38) | 2.06 (0.00 + 2.06) | 0.00 | 7.11 (3.56) | 26,439 | 535 | 2.88 / 2.68 / 4.15 | 17.5 / 17.1 / 25.1 | 0.000797 |
+| router_first_jev | 18 | 0 | 1.00 (18/18) | 0.89 (16/18) | 0.89 (16/18) | 0.95 (36/38) | 3.06 (0.83 + 2.22) | 0.22 | 5.50 (1.06) | 14,952 | 317 | 0.25 / 0.22 / 0.39 | 9.3 / 9.8 / 12.1 | 0.000956 |
+
+
+In plain words, against the no-discovery baseline (`all_tools`), for this one agent model:
+
+- **Every discovery method cut input tokens by half or more** on single-turn and multi-turn
+  (BM25 -68% / -51%, regex -75% / -66%, LangChain selector -55% / -54%, Jev router -65% /
+  -67%). On those two workflows each cost 0.5 to 1.3 extra model calls per task; on
+  multi-step 1.2 to 3.3.
+- **Narrowing the tool list before the model sees it helped accuracy; making the model search
+  did not.** Single-turn first call correct: baseline 28/40, LangChain selector 35/40, Jev
+  router 33/40, BM25 search 29/40, regex search 22/40. Multi-turn (29 answerable turns):
+  baseline 19, selector 26, Jev 24, BM25 18, regex 16.
+- **The baseline is weak for a specific reason.** With all 31 tools loaded, Luna made no real
+  tool call on 10 of its 12 single-turn misses, hit the 8-step cap on 9 of 40 answerable
+  tasks and opened 2.6 skill files per task (under 1 in every other setup). So part of the
+  gap is this model reading skills instead of acting, not tool choice.
+- **Regex search was the weakest method everywhere.** A search returned the gold tool on only
+  23 of 40 single-turn tasks (BM25: 38 of 40), and on multi-step it completed 11 of 18
+  sequences in order (baseline 18, selector 17, BM25 and Jev 16).
+- **Multi-step is where the baseline wins**: 18/18 sequences in order. Discovery methods lose
+  a task or two because the second tool was not loaded or the agent stopped early.
+- **Jev is the fast router, the LangChain selector the slow one.** Jev took 0.19 s per call
+  (p90 0.24 s) and its setup had the lowest mean task latency on single-turn (8.1 s against 11.5 s
+  for the baseline) and multi-step (9.3 s against 13.8 s). The selector took 3.35 s per call (p90 3.3 s)
+  and runs before every model call (about 2.5 calls per task), giving the highest task
+  latency in all three workflows (14.2 s single-turn).
+- **No-tool questions**: every setup abstained on all of them, except the Jev setup on one of
+  8 single-turn questions.
+- **Cost per task does not follow tokens** (see the note on prompt caching below): BM25
+  search and the Jev setup were billed more per task than the baseline in all three workflows
+  despite sending far fewer tokens.
+
+**Why fewer tokens did not mean lower cost: prompt caching.** `all_tools` sent 39,053 input
+tokens per single-turn task and was billed $0.00057; `bm25_search` sent 12,329 and was billed
+$0.00069. I checked OpenRouter's usage fields with a direct probe on `openai/gpt-6-luna`: the
+same request with the 31 tools bound reported `cached_tokens` 0 and cost $0.00113 on the
+first call, then `cached_tokens` 9,041 of 9,059 and cost $0.000095 on the second and third
+calls, about a tenth of list price. So the baseline's large prefix (system prompt plus 31
+tool definitions) is identical on every call and is billed at the cached rate after the first
+one, while the search and router setups change the tool list between calls, which breaks the
+cached prefix. The harness records billed cost per row but not cached tokens per row, so the
+size of the effect per setup is not measured; the direction is confirmed by the probe.
+
+Caveats: one agent model; dev split only; multi-step gold is author-labelled; the Jev setup
+missed the second tool on 2 of 18 multi-step tasks (once the router's picks lacked it, once
+it was loaded and the agent stopped); 1 of 48 `langchain_selector` single-turn tasks is an
+error row (the selector model wrote prose before its JSON and LangChain's parser raised);
+runs stalled for minutes at a time between tasks although no recorded task took longer than
+131 s and no task hit the 300 s cap.
+
+
+**Earlier run, free models only** (`nvidia/nemotron-3-super-120b-a12b:free`; 48 dev-split
+questions = 40 answerable + 8 no-tool; router for `router_first` = free-model router
+`apodex/apodex-1.1-mini:free`, **not Jev**; run 2026-10-11; 0 error rows). Full tables:
+`summary.md` in the run directory. A sample of 48 on one model: differences of one or two
+questions are noise.
+
+Answerable questions (n=40), means per task:
+
+| setup | first real call = gold | gold reached | tool calls (search + real) | wasted real calls before gold | LLM calls (of which router) | input tokens | latency s (mean) |
+|---|---|---|---|---|---|---|---|
+| `all_tools` | 0.90 (36/40) | 0.95 (38/40) | 1.18 (0.00 + 1.18) | 0.10 | 2.33 (0) | 35,393 | 10.9 |
+| `bm25_search` | 0.85 (34/40) | 0.88 (35/40) | 2.05 (1.00 + 1.05) | 0.12 | 4.15 (0) | 12,383 | 19.7 |
+| `regex_search` | 0.80 (32/40) | 0.85 (34/40) | 2.42 (1.27 + 1.15) | 0.15 | 4.40 (0) | 12,818 | 27.0 |
+| `router_first` | 0.93 (37/40) | 0.95 (38/40) | 1.15 (0.05 + 1.10) | 0.05 | 3.35 (1.00) | 8,452 | 23.3 |
+
+No-tool questions (n=8; the right behaviour is to call no real tool):
+
+| setup | correct abstention | wasted real calls/task | `tool_search`/task | LLM calls | input tokens |
+|---|---|---|---|---|---|
+| `all_tools` | 0.75 (6/8) | 0.38 | 0.00 | 2.12 | 32,414 |
+| `bm25_search` | 1.00 (8/8) | 0.00 | 1.88 | 3.00 | 12,411 |
+| `regex_search` | 1.00 (8/8) | 0.00 | 1.62 | 2.75 | 10,195 |
+| `router_first` | 1.00 (8/8) | 0.00 | 1.62 | 4.75 | 17,367 |
+
+In plain words, for this model and sample:
+
+- Loading all 31 tools is the fastest and takes the fewest model calls, but every call
+  carries about 35k input tokens, roughly three times the search setups.
+- Tool search cuts input tokens by about 65% and costs about two extra model calls per task
+  (the search step, and usually a skill read): one search per task for BM25, 1.27 for regex.
+  The agent reaches the gold tool a little less often (35 and 34 of 40, against 38), mostly
+  because the search never returned it (BM25 returned gold for 36 of 40, regex for 35).
+- One upfront router pick matched `all_tools` on accuracy (37/40 first call, 38/40 reached)
+  with the fewest input tokens (-76%) and almost no searching (2 of 40 tasks fell back to
+  `tool_search`); the router's top 3 held the gold tool for 37 of 40. It pays one router
+  call per task (3.8 s mean) and was about twice as slow end to end as `all_tools`.
+- On no-tool questions the discovery setups abstained every time; `all_tools` called a tool
+  it should not have on 2 of 8. With nothing useful loaded, `router_first` searched before
+  giving up, so it used the most model calls there (4.75).
+- Latency on free models is dominated by provider queueing, so read it as a rough ordering.
+
+A second model (`apodex/apodex-1.1-mini:free`) was started and stopped after 20 of 48
+`all_tools` questions to leave the day's free quota for other runs; that cell is incomplete
+and is not reported.
+
+Free models are rate limited (OpenRouter: 20 requests/min; 50/day, or 1,000/day after buying
+credits). The run paces requests (15/min by default), retries 429s with backoff, runs one
+model through every setup before the next, checks `/api/v1/key` before each cell and stops
+cleanly when the day's free quota is nearly used. Rerun the same command to resume;
+`--retry-errors` reruns error rows.
+
 ## 🚀 Quick start
 
 ```bash

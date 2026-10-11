@@ -19,6 +19,10 @@ anthropic = ["strands-agents[anthropic]>=1.0"]
 openai = ["strands-agents[openai]>=1.0"]
 huggingface = ["strands-agents[openai]>=1.0"]   # HF Inference Providers via OpenAI-compatible router
 embed = ["fastembed>=0.4", "numpy>=1.26"]
+deepagents = [
+    "deepagents>=0.7.23",
+    "langchain-openai>=1.7.0",
+]
 
 [project.scripts]
 tdb = "tooldiscoverybench.cli:main"
