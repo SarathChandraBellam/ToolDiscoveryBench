@@ -470,6 +470,51 @@ uv run --extra deepagents python -m tooldiscoverybench.harness --config configs/
 uv run --extra deepagents python -m tooldiscoverybench.harness --config configs/harness.yaml --summary-only
 ```
 
+**Results** (one free model, `nvidia/nemotron-3-super-120b-a12b:free`; 48 dev-split
+questions = 40 answerable + 8 no-tool; router for `router_first` = free-model router
+`apodex/apodex-1.1-mini:free`, **not Jev**; run 2026-10-11; 0 error rows). Full tables:
+`summary.md` in the run directory. A sample of 48 on one model: differences of one or two
+questions are noise.
+
+Answerable questions (n=40), means per task:
+
+| setup | first real call = gold | gold reached | tool calls (search + real) | wasted real calls before gold | LLM calls (of which router) | input tokens | latency s (mean) |
+|---|---|---|---|---|---|---|---|
+| `all_tools` | 0.90 (36/40) | 0.95 (38/40) | 1.18 (0.00 + 1.18) | 0.10 | 2.33 (0) | 35,393 | 10.9 |
+| `bm25_search` | 0.85 (34/40) | 0.88 (35/40) | 2.05 (1.00 + 1.05) | 0.12 | 4.15 (0) | 12,383 | 19.7 |
+| `regex_search` | 0.80 (32/40) | 0.85 (34/40) | 2.42 (1.27 + 1.15) | 0.15 | 4.40 (0) | 12,818 | 27.0 |
+| `router_first` | 0.93 (37/40) | 0.95 (38/40) | 1.15 (0.05 + 1.10) | 0.05 | 3.35 (1.00) | 8,452 | 23.3 |
+
+No-tool questions (n=8; the right behaviour is to call no real tool):
+
+| setup | correct abstention | wasted real calls/task | `tool_search`/task | LLM calls | input tokens |
+|---|---|---|---|---|---|
+| `all_tools` | 0.75 (6/8) | 0.38 | 0.00 | 2.12 | 32,414 |
+| `bm25_search` | 1.00 (8/8) | 0.00 | 1.88 | 3.00 | 12,411 |
+| `regex_search` | 1.00 (8/8) | 0.00 | 1.62 | 2.75 | 10,195 |
+| `router_first` | 1.00 (8/8) | 0.00 | 1.62 | 4.75 | 17,367 |
+
+In plain words, for this model and sample:
+
+- Loading all 31 tools is the fastest and takes the fewest model calls, but every call
+  carries about 35k input tokens, roughly three times the search setups.
+- Tool search cuts input tokens by about 65% and costs about two extra model calls per task
+  (the search step, and usually a skill read): one search per task for BM25, 1.27 for regex.
+  The agent reaches the gold tool a little less often (35 and 34 of 40, against 38), mostly
+  because the search never returned it (BM25 returned gold for 36 of 40, regex for 35).
+- One upfront router pick matched `all_tools` on accuracy (37/40 first call, 38/40 reached)
+  with the fewest input tokens (-76%) and almost no searching (2 of 40 tasks fell back to
+  `tool_search`); the router's top 3 held the gold tool for 37 of 40. It pays one router
+  call per task (3.8 s mean) and was about twice as slow end to end as `all_tools`.
+- On no-tool questions the discovery setups abstained every time; `all_tools` called a tool
+  it should not have on 2 of 8. With nothing useful loaded, `router_first` searched before
+  giving up, so it used the most model calls there (4.75).
+- Latency on free models is dominated by provider queueing, so read it as a rough ordering.
+
+A second model (`apodex/apodex-1.1-mini:free`) was started and stopped after 20 of 48
+`all_tools` questions to leave the day's free quota for other runs; that cell is incomplete
+and is not reported.
+
 Free models are rate limited (OpenRouter: 20 requests/min; 50/day, or 1,000/day after buying
 credits). The run paces requests (15/min by default), retries 429s with backoff, runs one
 model through every setup before the next, checks `/api/v1/key` before each cell and stops
